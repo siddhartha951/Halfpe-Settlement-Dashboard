@@ -1,0 +1,19 @@
+{
+  "name": "halfpe-vendor-payments-dashboard",
+  "version": "1.0.0",
+  "description": "HalfPe Vendor Payments Dashboard - Single source of truth for vendor sales, returns & settlements",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "tunnel": "node -e \"import('untun').then(async ({ startTunnel }) => { const t = await startTunnel({ port: 4000 }); console.log('TUNNEL_URL:', await t.getURL()); })\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.8",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "untun": "^0.2.2"
+  }
+}

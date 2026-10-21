@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HalfPe — Vendor Payments & Settlement Dashboard</title>
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#F6F5F4">
+
+  <!-- Notion Inter & Lyon Serif Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+
+  <!-- GSAP 3 & Three.js CDNs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="halfpe-logo.png">
+
+  <link rel="stylesheet" href="styles.css">
+  <script src="three-bg.js" defer></script>
+</head>
+
+<body>
+  <!-- Ambient Three.js 3D Constellation Background Canvas -->
+  <canvas id="threeCanvas" class="three-canvas"></canvas>
+
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <!-- Mobile Hamburger Button -->
+      <button class="mobile-menu-btn" id="btnMobileMenu" onclick="toggleMobileDrawer()"
+        aria-label="Open Navigation Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+      <div class="brand-logo" onclick="switchMainTab('vendors')" title="HalfPe Settlement Engine">
+        <img src="halfpe-logo.png" alt="HalfPe Logo" class="brand-logo-img">
+        <span class="brand-half">Half</span><span class="brand-pe">Pe</span>
+        <span class="brand-badge">SETTLEMENT</span>
+      </div>
+
+      <div class="event-selector">
+        <span class="event-icon">📍</span>
+        <div class="event-info">
+          <span class="event-name">Half Price Days — Vijayawada Expo</span>
+          <span class="event-sub">SVN Conventions, Poranki (8–11 Oct 2026)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <!-- Shopify Connection Status Badge -->
+      <div id="shopifyStatusPill" class="shopify-live-pill">
+        <span class="shopify-live-dot"></span>
+        <span id="shopifyStatusText">Shopify Connected</span>
+      </div>
+
+      <!-- User Account Chip & Quick Switch -->
+      <div class="user-account-chip" id="userAccountChip" onclick="openLoginModal()"
+        title="Click to view credentials or switch user">
+        <div class="user-avatar-circle" id="userAvatarCircle">A</div>
+        <div class="user-chip-text">
+          <span class="user-chip-name" id="userChipName">Super Admin</span>
+          <span class="user-chip-role" id="userChipRole">Admin</span>
+        </div>
+        <span class="user-chip-key-icon" title="View Login Credentials">🔑</span>
+      </div>
+
+      <button class="btn btn-outline btn-sm desktop-only" onclick="openWebhookSimulator()">
+        ⚡ Simulate Webhook
+      </button>
+
+      <button class="btn btn-primary btn-sm desktop-only" id="btnShopifySync" onclick="triggerShopifySync()">
+        <span id="syncIcon">🔄</span> <span id="syncText">Sync Shopify</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile Navigation Drawer -->
+  <div id="mobileDrawerOverlay" class="mobile-drawer-overlay" onclick="toggleMobileDrawer(false)"></div>
+  <aside id="mobileDrawer" class="mobile-drawer">
+    <div class="mobile-drawer-header">
+      <div class="brand-logo">
+        <img src="halfpe-logo.png" alt="HalfPe Logo" class="brand-logo-img">
+        <span class="brand-half">Half</span><span class="brand-pe">Pe</span>
+        <span class="brand-badge">SETTLEMENT</span>
+      </div>
+      <button class="drawer-close-btn" onclick="toggleMobileDrawer(false)" aria-label="Close menu">✕</button>
+    </div>
+
+    <!-- Active User & Credential Switch Card in Drawer -->
+    <div class="drawer-user-card" onclick="openLoginModal(); toggleMobileDrawer(false);">
+      <div class="user-avatar-circle" id="drawerUserAvatar">A</div>
+      <div class="drawer-user-info">
+        <span class="drawer-user-name" id="drawerUserName">Krishna (Super Admin)</span>
+        <span class="drawer-user-role" id="drawerUserRole">Super Admin</span>
+      </div>
+      <button class="btn btn-xs btn-outline" style="margin-left: auto;">🔑 Switch</button>
+    </div>
+
+    <!-- Drawer Navigation Links -->
+    <div class="drawer-nav-section">
+      <div class="drawer-nav-title">SECTIONS</div>
+      <button class="drawer-nav-item active" id="mDrawerVendors"
+        onclick="switchMainTab('vendors'); toggleMobileDrawer(false);">
+        <span class="d-icon">🏢</span> All Event Vendors
+      </button>
+      <button class="drawer-nav-item" id="mDrawerRecon" onclick="switchMainTab('recon'); toggleMobileDrawer(false);">
+        <span class="d-icon">⚖️</span> Daily Reconciliation & Locks
+      </button>
+      <button class="drawer-nav-item" id="mDrawerExceptions"
+        onclick="switchMainTab('exceptions'); toggleMobileDrawer(false);">
+        <span class="d-icon">⚠️</span> Audit Exceptions & Discrepancies
+      </button>
+      <button class="drawer-nav-item" id="mDrawerGlobalAudit"
+        onclick="switchMainTab('globalAudit'); toggleMobileDrawer(false);">
+        <span class="d-icon">📜</span> Global Audit Trail
+      </button>
+    </div>
+
+    <!-- Drawer Quick Actions -->
+    <div class="drawer-actions-section">
+      <div class="drawer-nav-title">DATA ACTIONS</div>
+      <button class="btn btn-primary btn-block" onclick="triggerShopifySync(); toggleMobileDrawer(false);">
+        🔄 Sync Shopify Live
+      </button>
+      <button class="btn btn-outline btn-block" style="margin-top: 8px;"
+        onclick="openWebhookSimulator(); toggleMobileDrawer(false);">
+        ⚡ Simulate Webhook
+      </button>
+      <button class="btn btn-subtle btn-block" style="margin-top: 8px;"
+        onclick="openLoginModal(); toggleMobileDrawer(false);">
+        🔑 Show Login Credentials
+      </button>
+    </div>
+
+    <div class="drawer-footer">
+      <div class="drawer-event-pill">📍 SVN Conventions, Vijayawada</div>
+      <div class="drawer-version">HalfPe Settlement Engine v2.4</div>
+    </div>
+  </aside>
+
+  <!-- Date Range Filter Toolbar (Section / Requirements) -->
+  <div class="date-range-toolbar">
+    <div class="date-presets-group">
+      <span class="date-preset-label">📅 Range:</span>
+      <button class="date-preset-btn active" id="presetAll" onclick="setDatePreset('all')">Since 6 Oct</button>
+      <button class="date-preset-btn" id="presetExpo" onclick="setDatePreset('expo')">8–11 Oct Expo</button>
+      <button class="date-preset-btn" id="presetToday" onclick="setDatePreset('today')">Today</button>
+      <button class="date-preset-btn" id="presetCustom" onclick="setDatePreset('custom')">Custom</button>
+    </div>
+
+    <div class="custom-date-picker-wrap" id="customDateWrap" style="display: none;">
+      <label for="customFromDate">From:</label>
+      <input type="date" id="customFromDate" value="2026-10-06">
+      <label for="customToDate">To:</label>
+      <input type="date" id="customToDate">
+      <button class="btn btn-outline btn-sm" onclick="applyCustomDateRange()">Apply</button>
+    </div>
+
+    <div class="date-info-wrap">
+      <span id="activeDateDisplay" class="active-date-tag">Active: Since 6 Oct 2026</span>
+      <span id="lastSyncDisplay" class="last-sync-tag"></span>
+    </div>
+  </div>
+
+  <!-- Desktop Navigation Tabs -->
+  <nav class="app-nav desktop-nav">
+    <div class="nav-container">
+      <button class="nav-tab active" id="tabVendors" onclick="switchMainTab('vendors')">
+        🏢 All Event Vendors
+      </button>
+      <button class="nav-tab" id="tabRecon" onclick="switchMainTab('recon')">
+        ⚖️ Daily Cash/Online Reconciliation & Locks
+      </button>
+      <button class="nav-tab" id="tabExceptions" onclick="switchMainTab('exceptions')">
+        ⚠️ Audit Exceptions & Discrepancies
+      </button>
+      <button class="nav-tab" id="tabGlobalAudit" onclick="switchMainTab('globalAudit')">
+        📜 Global Audit Log
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="main-content" id="mainContent">
+    <!-- Content rendered dynamically via app.js -->
+  </main>
+
+  <!-- Mobile Bottom Navigation Bar (Fixed for < 768px screens) -->
+  <nav class="mobile-bottom-nav" id="mobileBottomNav">
+    <button class="mobile-nav-btn active" id="bNavVendors" onclick="switchMainTab('vendors')">
+      <span class="b-icon">🏢</span>
+      <span class="b-label">Vendors</span>
+    </button>
+    <button class="mobile-nav-btn" id="bNavRecon" onclick="switchMainTab('recon')">
+      <span class="b-icon">⚖️</span>
+      <span class="b-label">Recon</span>
+    </button>
+    <button class="mobile-nav-btn" id="bNavExceptions" onclick="switchMainTab('exceptions')">
+      <span class="b-icon">⚠️</span>
+      <span class="b-label">Exceptions</span>
+    </button>
+    <button class="mobile-nav-btn" id="bNavAudit" onclick="switchMainTab('globalAudit')">
+      <span class="b-icon">📜</span>
+      <span class="b-label">Audit</span>
+    </button>
+    <button class="mobile-nav-btn" id="bNavAccount" onclick="openLoginModal()">
+      <span class="b-icon">🔑</span>
+      <span class="b-label">Login</span>
+    </button>
+  </nav>
+
+  <!-- Generic Modals Container -->
+  <div id="modalContainer" class="modal-backdrop hidden"></div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
