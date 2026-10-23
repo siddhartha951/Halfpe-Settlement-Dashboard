@@ -104,6 +104,8 @@ async function init() {
   window.closeModal = closeModal;
   window.toggleMobileDrawer = toggleMobileDrawer;
   window.switchMainTab = switchMainTab;
+  window.handleSearch = handleSearch;
+  window.handleStatusFilter = handleStatusFilter;
 }
 
 function updateUserChipUI() {
@@ -777,20 +779,144 @@ async function loadVendorsSummary() {
   }
 }
 
-function renderVendorsListView() {
-  if (!state.vendorsData) return;
-  const { vendors, eventTotals } = state.vendorsData;
+// -------------------------------------------------------------
+// Stall Number Natural Numeric Sorting (Bug 5)
+// -------------------------------------------------------------
+function parseStallNumber(item) {
+  const raw = item && item.vendor ? item.vendor.stallNo : (item ? item.stallNo : '');
+  if (!raw) return NaN;
+  const match = String(raw).match(/\d+/);
+  return match ? parseInt(match[0], 10) : NaN;
+}
 
-  // Filter vendors by search and status
-  const filtered = vendors.filter(item => {
-    const matchesSearch = 
-      item.vendor.name.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
-      item.vendor.stallNo.toLowerCase().includes(state.searchQuery.toLowerCase()) ||
-      item.vendor.webkulSellerId.toLowerCase().includes(state.searchQuery.toLowerCase());
-    
+function compareStallNumbers(a, b) {
+  const stallA = parseStallNumber(a);
+  const stallB = parseStallNumber(b);
+  const validA = !Number.isNaN(stallA);
+  const validB = !Number.isNaN(stallB);
+
+  const nameA = String((a.vendor ? a.vendor.name : a.name) || '');
+  const nameB = String((b.vendor ? b.vendor.name : b.name) || '');
+
+  if (validA && validB) {
+    if (stallA !== stallB) return stallA - stallB;
+    return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+  }
+  if (validA) return -1;
+  if (validB) return 1;
+
+  const rawA = String((a.vendor ? a.vendor.stallNo : a.stallNo) || '');
+  const rawB = String((b.vendor ? b.vendor.stallNo : b.stallNo) || '');
+  return rawA.localeCompare(rawB, undefined, { numeric: true, sensitivity: 'base' }) || nameA.localeCompare(nameB);
+}
+
+function getFilteredAndSortedVendors() {
+  if (!state.vendorsData || !state.vendorsData.vendors) return [];
+  const vendors = [...state.vendorsData.vendors];
+
+  // Natural numeric ascending sort by stall number (Bug 5: 1, 2, 3, 10, 11)
+  vendors.sort(compareStallNumbers);
+
+  const query = (state.searchQuery || '').trim().toLowerCase();
+  return vendors.filter(item => {
+    const searchableText = [
+      item.vendor.name,
+      item.vendor.stallNo,
+      item.vendor.webkulSellerId,
+      item.vendor.code,
+      item.vendor.category
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    const matchesSearch = !query || searchableText.includes(query);
     const matchesStatus = state.statusFilter === 'all' || item.status.toLowerCase() === state.statusFilter.toLowerCase();
     return matchesSearch && matchesStatus;
   });
+}
+
+function renderVendorTableRowHTML(item) {
+  return `
+    <tr>
+      <td><strong style="color: var(--notion-primary); font-weight: 600;">${item.vendor.stallNo}</strong></td>
+      <td>
+        <div style="font-weight: 600; color: var(--notion-ink);">${item.vendor.name}</div>
+        <div style="font-size: 0.72rem; color: var(--notion-muted);">${item.vendor.webkulSellerId}</div>
+      </td>
+      <td class="font-mono">${item.ordersCount}</td>
+      <td class="font-mono">${formatINR(item.grossSales)}</td>
+      <td class="font-mono" style="color: var(--notion-red);">-${formatINR(item.returnsAmount)}</td>
+      <td class="font-mono">${formatINR(item.netSales)}</td>
+      <td class="font-mono" style="color: var(--notion-secondary);">${item.commissionPct}% (${formatINR(item.commissionAmount)})</td>
+      <td class="font-mono" style="color: var(--notion-success); font-weight: 600;">${formatINR(item.settlementPayable)}</td>
+      <td class="font-mono" style="color: var(--notion-primary);">${formatINR(item.alreadyPaid)}</td>
+      <td class="font-mono" style="color: var(--notion-amber-deep); font-weight: 600;">${formatINR(item.balanceToPay)}</td>
+      <td>
+        <span class="badge ${
+          item.status === 'Settled' ? 'badge-status-settled' :
+          item.status === 'Partly paid' ? 'badge-status-partly' : 'badge-status-open'
+        }">
+          ${item.status}
+        </span>
+      </td>
+      <td>
+        <button class="btn btn-primary btn-sm" onclick="selectVendor('${item.vendor.id}')">
+          View Details →
+        </button>
+      </td>
+    </tr>
+  `;
+}
+
+function updateVendorTableRowsOnly() {
+  const tbody = document.getElementById('vendorTableBody');
+  const countBadge = document.getElementById('vendorCountBadge');
+  const tfoot = document.getElementById('vendorTableFooter');
+
+  if (!tbody || !countBadge) {
+    renderVendorsListView();
+    return;
+  }
+
+  const filtered = getFilteredAndSortedVendors();
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 36px;">No vendors match your search "${state.searchQuery}".</td></tr>`;
+  } else {
+    tbody.innerHTML = filtered.map(renderVendorTableRowHTML).join('');
+  }
+
+  countBadge.textContent = `${filtered.length} Vendors Listed`;
+
+  if (tfoot) {
+    const totOrders = filtered.reduce((s, it) => s + (it.ordersCount || 0), 0);
+    const totGross = filtered.reduce((s, it) => s + (it.grossSales || 0), 0);
+    const totReturns = filtered.reduce((s, it) => s + (it.returnsAmount || 0), 0);
+    const totNet = filtered.reduce((s, it) => s + (it.netSales || 0), 0);
+    const totComm = filtered.reduce((s, it) => s + (it.commissionAmount || 0), 0);
+    const totPayable = filtered.reduce((s, it) => s + (it.settlementPayable || 0), 0);
+    const totPaid = filtered.reduce((s, it) => s + (it.alreadyPaid || 0), 0);
+    const totBal = filtered.reduce((s, it) => s + (it.balanceToPay || 0), 0);
+
+    tfoot.innerHTML = `
+      <tr>
+        <td colspan="2">TOTALS (${filtered.length} Vendors)</td>
+        <td>${totOrders}</td>
+        <td>${formatINR(totGross)}</td>
+        <td style="color: #F87171;">-${formatINR(totReturns)}</td>
+        <td>${formatINR(totNet)}</td>
+        <td style="color: #A5B4FC;">${formatINR(totComm)}</td>
+        <td style="color: #34D399;">${formatINR(totPayable)}</td>
+        <td style="color: #60A5FA;">${formatINR(totPaid)}</td>
+        <td style="color: #FBBF24;">${formatINR(totBal)}</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+    `;
+  }
+}
+
+function renderVendorsListView() {
+  if (!state.vendorsData) return;
+  const { eventTotals } = state.vendorsData;
+  const filtered = getFilteredAndSortedVendors();
 
   const main = document.getElementById('mainContent');
   main.innerHTML = `
@@ -843,15 +969,18 @@ function renderVendorsListView() {
       <div class="panel-header">
         <div class="panel-title-group">
           <h2 class="panel-title">Stall & Vendor Settlements</h2>
-          <span class="badge badge-source-auto">${filtered.length} Vendors Listed</span>
+          <span class="badge badge-source-auto" id="vendorCountBadge">${filtered.length} Vendors Listed</span>
         </div>
         <div class="panel-controls">
           <input 
-            type="text" 
+            type="search" 
+            id="vendorSearchInput"
             class="search-input" 
             placeholder="Search vendor name, stall no..." 
             value="${state.searchQuery}"
             oninput="handleSearch(this.value)"
+            autocomplete="off"
+            aria-label="Search vendor or stall number"
           />
           <select class="select-filter" onchange="handleStatusFilter(this.value)">
             <option value="all" ${state.statusFilter === 'all' ? 'selected' : ''}>All Statuses</option>
@@ -883,39 +1012,12 @@ function renderVendorsListView() {
               <th>Action</th>
             </tr>
           </thead>
-          <tbody>
-            ${filtered.map(item => `
-              <tr>
-                <td><strong style="color: var(--notion-primary); font-weight: 600;">${item.vendor.stallNo}</strong></td>
-                <td>
-                  <div style="font-weight: 600; color: var(--notion-ink);">${item.vendor.name}</div>
-                  <div style="font-size: 0.72rem; color: var(--notion-muted);">${item.vendor.webkulSellerId}</div>
-                </td>
-                <td class="font-mono">${item.ordersCount}</td>
-                <td class="font-mono">${formatINR(item.grossSales)}</td>
-                <td class="font-mono" style="color: var(--notion-red);">-${formatINR(item.returnsAmount)}</td>
-                <td class="font-mono">${formatINR(item.netSales)}</td>
-                <td class="font-mono" style="color: var(--notion-secondary);">${item.commissionPct}% (${formatINR(item.commissionAmount)})</td>
-                <td class="font-mono" style="color: var(--notion-success); font-weight: 600;">${formatINR(item.settlementPayable)}</td>
-                <td class="font-mono" style="color: var(--notion-primary);">${formatINR(item.alreadyPaid)}</td>
-                <td class="font-mono" style="color: var(--notion-amber-deep); font-weight: 600;">${formatINR(item.balanceToPay)}</td>
-                <td>
-                  <span class="badge ${
-                    item.status === 'Settled' ? 'badge-status-settled' :
-                    item.status === 'Partly paid' ? 'badge-status-partly' : 'badge-status-open'
-                  }">
-                    ${item.status}
-                  </span>
-                </td>
-                <td>
-                  <button class="btn btn-primary btn-sm" onclick="selectVendor('${item.vendor.id}')">
-                    View Details →
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
+          <tbody id="vendorTableBody">
+            ${filtered.length === 0 ? `
+              <tr><td colspan="12" style="text-align: center; color: var(--text-muted); padding: 36px;">No vendors found.</td></tr>
+            ` : filtered.map(renderVendorTableRowHTML).join('')}
           </tbody>
-          <tfoot>
+          <tfoot id="vendorTableFooter">
             <tr>
               <td colspan="2">TOTALS (${filtered.length} Vendors)</td>
               <td>${eventTotals.totalOrders}</td>
@@ -935,7 +1037,7 @@ function renderVendorsListView() {
     </div>
   `;
 
-  // GSAP micro-animations for high-perceived quality & smooth entrance
+  // GSAP micro-animations on initial load
   if (typeof gsap !== 'undefined') {
     gsap.from('.summary-card', {
       opacity: 0,
@@ -944,24 +1046,17 @@ function renderVendorsListView() {
       stagger: 0.03,
       ease: 'power2.out'
     });
-    gsap.from('.data-table tbody tr', {
-      opacity: 0,
-      y: 6,
-      duration: 0.22,
-      stagger: 0.012,
-      ease: 'power1.out'
-    });
   }
 }
 
 function handleSearch(val) {
   state.searchQuery = val;
-  renderVendorsListView();
+  updateVendorTableRowsOnly();
 }
 
 function handleStatusFilter(val) {
   state.statusFilter = val;
-  renderVendorsListView();
+  updateVendorTableRowsOnly();
 }
 
 // -------------------------------------------------------------
