@@ -216,8 +216,13 @@ class ShopifyClient {
 
     for (const order of orders) {
       totalOrdersProcessed++;
-      const lineItems = order.line_items || [];
       const orderId = String(order.id);
+      // Skip specific fake joke order 7410932088898
+      if (orderId === '7410932088898') {
+        continue;
+      }
+
+      const lineItems = order.line_items || [];
       const orderName = order.name || `#HP-${orderId.slice(-5)}`;
       const customerName = order.customer
         ? `${order.customer.first_name || ''} ${order.customer.last_name || ''}`.trim()
@@ -272,6 +277,10 @@ class ShopifyClient {
         }
 
         const linePrice = parseFloat(item.price || 0) * (item.quantity || 1);
+        if (linePrice > 500000) {
+          console.warn(`[Shopify Sync] Skipping unrealistic line item (₹${linePrice}) in order #${orderName}`);
+          continue;
+        }
         vendorGroups[vendorKey].totalAmount += linePrice;
         vendorGroups[vendorKey].itemsCount += (item.quantity || 1);
         vendorGroups[vendorKey].items.push(item);
