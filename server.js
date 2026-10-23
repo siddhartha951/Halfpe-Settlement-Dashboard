@@ -75,6 +75,13 @@ async function performShopifySync(options = {}) {
 // -------------------------------------------------------------
 // 1. Auth & User Context
 // -------------------------------------------------------------
+let currentUser = (store.data && store.data.users && store.data.users[0]) || {
+  id: 'usr_1',
+  name: 'Krishna (Super Admin)',
+  email: 'admin@halfpe.com',
+  role: 'super_admin'
+};
+
 const USER_CREDENTIALS = [
   { id: 'usr_1', email: 'admin@halfpe.com', password: 'admin@2026', name: 'Krishna (Super Admin)', role: 'super_admin', roleLabel: 'Super Admin', desc: 'Full event settlement, edit & void authorization' },
   { id: 'usr_2', email: 'billing@halfpe.com', password: 'billing@2026', name: 'Ravi Teja (Billing Counter)', role: 'billing_staff', roleLabel: 'Billing Counter Staff', desc: 'Counter POS entry, cash collection & refund requests' },
@@ -166,42 +173,48 @@ app.get('/api/vendors', (req, res) => {
 });
 
 app.get('/api/vendors/:id', (req, res) => {
-  const { id } = req.params;
-  const { startDate, endDate } = req.query;
-  const summary = store.getVendorSummary(id, { startDate, endDate });
-  if (!summary) return res.status(404).json({ error: 'Vendor not found' });
+  try {
+    const { id } = req.params;
+    const { startDate, endDate } = req.query;
+    const summary = store.getVendorSummary(id, { startDate, endDate });
+    if (!summary) return res.status(404).json({ error: 'Vendor not found' });
 
-  // Get bills, returns, payouts
-  let bills = store.data.billRows.filter(r => r.vendorId === id);
-  let returns = store.data.returns.filter(ret => ret.vendorId === id);
-  let payouts = store.data.payouts.filter(p => p.vendorId === id);
+    // Get bills, returns, payouts
+    let bills = store.data.billRows.filter(r => r.vendorId === id);
+    let returns = store.data.returns.filter(ret => ret.vendorId === id);
+    let payouts = store.data.payouts.filter(p => p.vendorId === id);
 
-  bills = store.filterByDateRange(bills, 'createdAt', startDate, endDate);
-  returns = store.filterByDateRange(returns, 'date', startDate, endDate);
-  payouts = store.filterByDateRange(payouts, 'date', startDate, endDate);
+    bills = store.filterByDateRange(bills, 'createdAt', startDate, endDate);
+    returns = store.filterByDateRange(returns, 'date', startDate, endDate);
+    payouts = store.filterByDateRange(payouts, 'date', startDate, endDate);
 
-  const auditHistory = store.data.auditLog.filter(a => 
-    a.entityId === id || bills.some(b => b.id === a.entityId)
-  );
+    const auditHistory = store.data.auditLog.filter(a => 
+      a.entityId === id || bills.some(b => b.id === a.entityId)
+    );
 
-  // Mask mobile numbers if not admin
-  const maskedBills = bills.map(b => {
-    let maskedMobile = b.mobile || 'N/A';
-    if (currentUser.role === 'viewer' || currentUser.role === 'billing_staff') {
-      if (maskedMobile.length >= 4) {
-        maskedMobile = 'XXXXXX' + maskedMobile.slice(-4);
+    // Mask mobile numbers if not admin
+    const activeRole = (currentUser && currentUser.role) || 'super_admin';
+    const maskedBills = bills.map(b => {
+      let maskedMobile = b.mobile || 'N/A';
+      if (activeRole === 'viewer' || activeRole === 'billing_staff') {
+        if (maskedMobile.length >= 4) {
+          maskedMobile = 'XXXXXX' + maskedMobile.slice(-4);
+        }
       }
-    }
-    return { ...b, mobile: maskedMobile, rawMobile: b.mobile };
-  });
+      return { ...b, mobile: maskedMobile, rawMobile: b.mobile };
+    });
 
-  res.json({
-    ...summary,
-    bills: maskedBills,
-    returns,
-    payouts,
-    auditHistory
-  });
+    res.json({
+      ...summary,
+      bills: maskedBills,
+      returns,
+      payouts,
+      auditHistory
+    });
+  } catch (err) {
+    console.error('Error in /api/vendors/:id:', err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 });
 
 app.patch('/api/vendors/:id/commission', (req, res) => {
@@ -257,9 +270,10 @@ app.get('/api/bills', (req, res) => {
   }
 
   // Mask mobile numbers if not admin
+  const activeRole = (currentUser && currentUser.role) || 'super_admin';
   const maskedBills = list.map(b => {
     let maskedMobile = b.mobile || 'N/A';
-    if (currentUser.role === 'viewer' || currentUser.role === 'billing_staff') {
+    if (activeRole === 'viewer' || activeRole === 'billing_staff') {
       if (maskedMobile.length >= 4) {
         maskedMobile = 'XXXXXX' + maskedMobile.slice(-4);
       }
