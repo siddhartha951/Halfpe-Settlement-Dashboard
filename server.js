@@ -75,6 +75,31 @@ async function performShopifySync(options = {}) {
 // -------------------------------------------------------------
 // 1. Auth & User Context
 // -------------------------------------------------------------
+function getBusinessTodayKolkata() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const p = type => parts.find(it => it.type === type)?.value ?? '';
+  return `${p('year')}-${p('month')}-${p('day')}`;
+}
+
+function validateDateRange(startDate, endDate) {
+  const today = getBusinessTodayKolkata();
+  if (startDate && startDate > today) {
+    return { valid: false, error: `Start date (${startDate}) cannot exceed today (${today}) in Asia/Kolkata.` };
+  }
+  if (endDate && endDate > today) {
+    return { valid: false, error: `End date (${endDate}) cannot exceed today (${today}) in Asia/Kolkata.` };
+  }
+  if (startDate && endDate && endDate < startDate) {
+    return { valid: false, error: 'End date cannot be earlier than start date.' };
+  }
+  return { valid: true, today };
+}
+
 let currentUser = (store.data && store.data.users && store.data.users[0]) || {
   id: 'usr_1',
   name: 'Krishna (Super Admin)',
@@ -89,12 +114,12 @@ const USER_CREDENTIALS = [
   { id: 'usr_4', email: 'viewer@halfpe.com', password: 'viewer@2026', name: 'Suresh Kumar (Audit Viewer)', role: 'viewer', roleLabel: 'External Auditor', desc: 'Read-only financial view, masked PII phones' }
 ];
 
+// Secure account metadata endpoint - NO PASSWORDS EXPOSED
 app.get('/api/auth/credentials', (req, res) => {
   res.json({
-    credentials: USER_CREDENTIALS.map(u => ({
+    accounts: USER_CREDENTIALS.map(u => ({
       id: u.id,
       email: u.email,
-      password: u.password,
       name: u.name,
       role: u.role,
       roleLabel: u.roleLabel,
@@ -114,7 +139,7 @@ app.post('/api/auth/login', (req, res) => {
   );
 
   if (!matched) {
-    return res.status(401).json({ error: 'Invalid email or password. Use demo credentials provided.' });
+    return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
   const storeUser = store.data.users.find(u => u.id === matched.id) || {
@@ -127,15 +152,31 @@ app.post('/api/auth/login', (req, res) => {
   currentUser = storeUser;
   res.json({
     success: true,
-    user: storeUser,
+    user: {
+      id: storeUser.id,
+      name: storeUser.name,
+      email: storeUser.email,
+      role: storeUser.role
+    },
+    token: Buffer.from(`${storeUser.id}:${Date.now()}`).toString('base64'),
     message: `Welcome back, ${storeUser.name}!`
   });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  currentUser = null;
+  res.json({ success: true, message: 'Logged out successfully' });
 });
 
 app.get('/api/auth/users', (req, res) => {
   res.json({
     currentUser,
-    users: store.data.users
+    users: store.data.users.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role
+    }))
   });
 });
 
@@ -144,7 +185,15 @@ app.post('/api/auth/switch', (req, res) => {
   const user = store.data.users.find(u => u.id === userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   currentUser = user;
-  res.json({ success: true, currentUser });
+  res.json({
+    success: true,
+    currentUser: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    }
+  });
 });
 
 // Middleware to check day lock for mutation
@@ -168,6 +217,10 @@ function checkDayLock(req, res, next) {
 // -------------------------------------------------------------
 app.get('/api/vendors', (req, res) => {
   const { startDate, endDate } = req.query;
+  const dateCheck = validateDateRange(startDate, endDate);
+  if (!dateCheck.valid) {
+    return res.status(400).json({ error: dateCheck.error });
+  }
   const data = store.getAllVendorsSummary({ startDate, endDate });
   res.json(data);
 });
@@ -176,6 +229,10 @@ app.get('/api/vendors/:id', (req, res) => {
   try {
     const { id } = req.params;
     const { startDate, endDate } = req.query;
+    const dateCheck = validateDateRange(startDate, endDate);
+    if (!dateCheck.valid) {
+      return res.status(400).json({ error: dateCheck.error });
+    }
     const summary = store.getVendorSummary(id, { startDate, endDate });
     if (!summary) return res.status(404).json({ error: 'Vendor not found' });
 
@@ -249,6 +306,10 @@ app.patch('/api/vendors/:id/commission', (req, res) => {
 // -------------------------------------------------------------
 app.get('/api/bills', (req, res) => {
   const { vendorId, paymentMode, source, status, search, mismatchOnly, startDate, endDate } = req.query;
+  const dateCheck = validateDateRange(startDate, endDate);
+  if (!dateCheck.valid) {
+    return res.status(400).json({ error: dateCheck.error });
+  }
   let list = [...store.data.billRows];
 
   list = store.filterByDateRange(list, 'createdAt', startDate, endDate);

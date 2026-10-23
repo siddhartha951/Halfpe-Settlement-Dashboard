@@ -68,15 +68,17 @@
         <span id="shopifyStatusText">Shopify Connected</span>
       </div>
 
-      <!-- User Account Chip & Quick Switch -->
-      <div class="user-account-chip" id="userAccountChip" onclick="openLoginModal()"
-        title="Click to view credentials or switch user">
-        <div class="user-avatar-circle" id="userAvatarCircle">A</div>
+      <!-- User Profile & Auth Button (No exposed credentials) -->
+      <div class="user-account-chip" id="userAccountChip" onclick="handleUserAuthClick()"
+        title="Account Profile & Authentication">
+        <div class="user-avatar-circle" id="userAvatarCircle">U</div>
         <div class="user-chip-text">
-          <span class="user-chip-name" id="userChipName">Super Admin</span>
-          <span class="user-chip-role" id="userChipRole">Admin</span>
+          <span class="user-chip-name" id="userChipName">Sign In</span>
+          <span class="user-chip-role" id="userChipRole">Guest</span>
         </div>
-        <span class="user-chip-key-icon" title="View Login Credentials">🔑</span>
+        <button class="btn btn-subtle btn-sm" id="authActionBtn" style="padding: 2px 8px; font-size: 0.72rem; margin-left: 6px;" onclick="event.stopPropagation(); handleUserAuthClick();">
+          Log In
+        </button>
       </div>
 
       <button class="btn btn-outline btn-sm desktop-only" onclick="openWebhookSimulator()">
@@ -105,45 +107,34 @@
     <div class="drawer-user-card" onclick="openLoginModal(); toggleMobileDrawer(false);">
       <div class="user-avatar-circle" id="drawerUserAvatar">A</div>
       <div class="drawer-user-info">
-        <span class="drawer-user-name" id="drawerUserName">Krishna (Super Admin)</span>
-        <span class="drawer-user-role" id="drawerUserRole">Super Admin</span>
+        <span class="drawer-user-name" id="drawerUserName">Sign In</span>
+        <span class="drawer-user-role" id="drawerUserRole">Guest</span>
       </div>
-      <button class="btn btn-xs btn-outline" style="margin-left: auto;">🔑 Switch</button>
+      <button class="btn btn-xs btn-outline" id="drawerAuthBtn" style="margin-left: auto;" onclick="handleUserAuthClick(); toggleMobileDrawer(false);">Sign In</button>
     </div>
 
-    <!-- Drawer Navigation Links -->
+    <!-- Drawer Navigation Links (Simplified to 2 Primary Dashboards) -->
     <div class="drawer-nav-section">
-      <div class="drawer-nav-title">SECTIONS</div>
-      <button class="drawer-nav-item active" id="mDrawerVendors"
+      <div class="drawer-nav-title">PRIMARY DASHBOARDS</div>
+      <button class="drawer-nav-item active" id="mDrawerOverall"
+        onclick="switchMainTab('overall'); toggleMobileDrawer(false);">
+        <span class="d-icon">📊</span> Overall Settlement Dashboard
+      </button>
+      <button class="drawer-nav-item" id="mDrawerVendors"
         onclick="switchMainTab('vendors'); toggleMobileDrawer(false);">
-        <span class="d-icon">🏢</span> All Event Vendors
-      </button>
-      <button class="drawer-nav-item" id="mDrawerRecon" onclick="switchMainTab('recon'); toggleMobileDrawer(false);">
-        <span class="d-icon">⚖️</span> Daily Reconciliation & Locks
-      </button>
-      <button class="drawer-nav-item" id="mDrawerExceptions"
-        onclick="switchMainTab('exceptions'); toggleMobileDrawer(false);">
-        <span class="d-icon">⚠️</span> Audit Exceptions & Discrepancies
-      </button>
-      <button class="drawer-nav-item" id="mDrawerGlobalAudit"
-        onclick="switchMainTab('globalAudit'); toggleMobileDrawer(false);">
-        <span class="d-icon">📜</span> Global Audit Trail
+        <span class="d-icon">🏢</span> Vendor-wise Dashboard
       </button>
     </div>
 
     <!-- Drawer Quick Actions -->
     <div class="drawer-actions-section">
-      <div class="drawer-nav-title">DATA ACTIONS</div>
+      <div class="drawer-nav-title">ACTIONS</div>
       <button class="btn btn-primary btn-block" onclick="triggerShopifySync(); toggleMobileDrawer(false);">
         🔄 Sync Shopify Live
       </button>
       <button class="btn btn-outline btn-block" style="margin-top: 8px;"
         onclick="openWebhookSimulator(); toggleMobileDrawer(false);">
         ⚡ Simulate Webhook
-      </button>
-      <button class="btn btn-subtle btn-block" style="margin-top: 8px;"
-        onclick="openLoginModal(); toggleMobileDrawer(false);">
-        🔑 Show Login Credentials
       </button>
     </div>
 
@@ -177,20 +168,14 @@
     </div>
   </div>
 
-  <!-- Desktop Navigation Tabs -->
+  <!-- Desktop Navigation Tabs (Exactly 2 Primary Dashboards) -->
   <nav class="app-nav desktop-nav">
     <div class="nav-container">
-      <button class="nav-tab active" id="tabVendors" onclick="switchMainTab('vendors')">
-        🏢 All Event Vendors
+      <button class="nav-tab active" id="tabOverall" onclick="switchMainTab('overall')">
+        📊 Overall Settlement Dashboard
       </button>
-      <button class="nav-tab" id="tabRecon" onclick="switchMainTab('recon')">
-        ⚖️ Daily Cash/Online Reconciliation & Locks
-      </button>
-      <button class="nav-tab" id="tabExceptions" onclick="switchMainTab('exceptions')">
-        ⚠️ Audit Exceptions & Discrepancies
-      </button>
-      <button class="nav-tab" id="tabGlobalAudit" onclick="switchMainTab('globalAudit')">
-        📜 Global Audit Log
+      <button class="nav-tab" id="tabVendors" onclick="switchMainTab('vendors')">
+        🏢 Vendor-wise Dashboard
       </button>
     </div>
   </nav>
@@ -202,25 +187,17 @@
 
   <!-- Mobile Bottom Navigation Bar (Fixed for < 768px screens) -->
   <nav class="mobile-bottom-nav" id="mobileBottomNav">
-    <button class="mobile-nav-btn active" id="bNavVendors" onclick="switchMainTab('vendors')">
+    <button class="mobile-nav-btn active" id="bNavOverall" onclick="switchMainTab('overall')">
+      <span class="b-icon">📊</span>
+      <span class="b-label">Overall</span>
+    </button>
+    <button class="mobile-nav-btn" id="bNavVendors" onclick="switchMainTab('vendors')">
       <span class="b-icon">🏢</span>
-      <span class="b-label">Vendors</span>
+      <span class="b-label">Vendor-wise</span>
     </button>
-    <button class="mobile-nav-btn" id="bNavRecon" onclick="switchMainTab('recon')">
-      <span class="b-icon">⚖️</span>
-      <span class="b-label">Recon</span>
-    </button>
-    <button class="mobile-nav-btn" id="bNavExceptions" onclick="switchMainTab('exceptions')">
-      <span class="b-icon">⚠️</span>
-      <span class="b-label">Exceptions</span>
-    </button>
-    <button class="mobile-nav-btn" id="bNavAudit" onclick="switchMainTab('globalAudit')">
-      <span class="b-icon">📜</span>
-      <span class="b-label">Audit</span>
-    </button>
-    <button class="mobile-nav-btn" id="bNavAccount" onclick="openLoginModal()">
-      <span class="b-icon">🔑</span>
-      <span class="b-label">Login</span>
+    <button class="mobile-nav-btn" id="bNavAccount" onclick="handleUserAuthClick()">
+      <span class="b-icon">👤</span>
+      <span class="b-label" id="bNavAccountLabel">Account</span>
     </button>
   </nav>
 

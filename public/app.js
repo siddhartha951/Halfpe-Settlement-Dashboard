@@ -9,7 +9,7 @@ const DEFAULT_USER = {
 const state = {
   currentUser: DEFAULT_USER,
   allUsers: [DEFAULT_USER],
-  activeTab: 'vendors', // 'vendors', 'recon', 'exceptions', 'globalAudit'
+  activeTab: 'overall', // 'overall' or 'vendors'
   selectedVendorId: null,
   vendorDetailSubTab: 'bills', // 'bills', 'returns', 'payouts', 'audit'
   vendorsData: null,
@@ -98,32 +98,58 @@ async function init() {
 
   // 8. Global exports for onclick handlers
   window.openLoginModal = openLoginModal;
+  window.handleUserAuthClick = handleUserAuthClick;
+  window.logout = logout;
+  window.togglePasswordVisibility = togglePasswordVisibility;
   window.closeModal = closeModal;
-  window.quickFillAndLogin = quickFillAndLogin;
   window.toggleMobileDrawer = toggleMobileDrawer;
   window.switchMainTab = switchMainTab;
 }
 
 function updateUserChipUI() {
-  if (!state.currentUser) return;
-  const u = state.currentUser;
   const nameEl = document.getElementById('userChipName');
   const roleEl = document.getElementById('userChipRole');
   const avatarEl = document.getElementById('userAvatarCircle');
+  const authActionBtn = document.getElementById('authActionBtn');
   const drawerAvatar = document.getElementById('drawerUserAvatar');
   const drawerName = document.getElementById('drawerUserName');
   const drawerRole = document.getElementById('drawerUserRole');
+  const drawerAuthBtn = document.getElementById('drawerAuthBtn');
+  const bNavAccountLabel = document.getElementById('bNavAccountLabel');
 
-  const initial = (u.name || 'A').trim().charAt(0).toUpperCase();
-  const roleClean = (u.role || 'Admin').replace('_', ' ');
+  if (state.currentUser) {
+    const u = state.currentUser;
+    const initial = (u.name || 'U').trim().charAt(0).toUpperCase();
+    const roleClean = (u.role || 'Admin').replace('_', ' ').toUpperCase();
 
-  if (nameEl) nameEl.textContent = u.name;
-  if (roleEl) roleEl.textContent = roleClean;
-  if (avatarEl) avatarEl.textContent = initial;
+    if (nameEl) nameEl.textContent = u.name;
+    if (roleEl) roleEl.textContent = roleClean;
+    if (avatarEl) avatarEl.textContent = initial;
+    if (authActionBtn) {
+      authActionBtn.textContent = 'Log Out';
+      authActionBtn.className = 'btn btn-danger-outline btn-xs';
+    }
 
-  if (drawerAvatar) drawerAvatar.textContent = initial;
-  if (drawerName) drawerName.textContent = u.name;
-  if (drawerRole) drawerRole.textContent = roleClean;
+    if (drawerAvatar) drawerAvatar.textContent = initial;
+    if (drawerName) drawerName.textContent = u.name;
+    if (drawerRole) drawerRole.textContent = roleClean;
+    if (drawerAuthBtn) drawerAuthBtn.textContent = 'Log Out';
+    if (bNavAccountLabel) bNavAccountLabel.textContent = u.name.split(' ')[0];
+  } else {
+    if (nameEl) nameEl.textContent = 'Sign In';
+    if (roleEl) roleEl.textContent = 'Guest';
+    if (avatarEl) avatarEl.textContent = '👤';
+    if (authActionBtn) {
+      authActionBtn.textContent = 'Log In';
+      authActionBtn.className = 'btn btn-primary btn-xs';
+    }
+
+    if (drawerAvatar) drawerAvatar.textContent = '👤';
+    if (drawerName) drawerName.textContent = 'Sign In';
+    if (drawerRole) drawerRole.textContent = 'Guest';
+    if (drawerAuthBtn) drawerAuthBtn.textContent = 'Log In';
+    if (bNavAccountLabel) bNavAccountLabel.textContent = 'Login';
+  }
 }
 
 function toggleMobileDrawer(open) {
@@ -343,115 +369,134 @@ async function switchUserRole(userId) {
 }
 
 // -------------------------------------------------------------
-// Authentication & Credentials Modal
+// Authentication & Secure Login Flow
 // -------------------------------------------------------------
-const DEFAULT_DEMO_CREDENTIALS = [
-  { id: 'usr_1', email: 'admin@halfpe.com', password: 'admin@2026', name: 'Krishna (Super Admin)', role: 'super_admin', roleLabel: 'Super Admin', desc: 'Full event settlement, edit & void authorization' },
-  { id: 'usr_2', email: 'billing@halfpe.com', password: 'billing@2026', name: 'Ravi Teja (Billing Counter)', role: 'billing_staff', roleLabel: 'Billing Counter Staff', desc: 'Counter POS entry, cash collection & refund requests' },
-  { id: 'usr_3', email: 'finance@halfpe.com', password: 'finance@2026', name: 'Ananya Rao (Finance & Accounts)', role: 'finance', roleLabel: 'Finance & Accounts', desc: 'Payouts, bank settlement, daily lock audits' },
-  { id: 'usr_4', email: 'viewer@halfpe.com', password: 'viewer@2026', name: 'Suresh Kumar (Audit Viewer)', role: 'viewer', roleLabel: 'External Auditor', desc: 'Read-only financial view, masked PII phones' }
-];
-
-async function openLoginModal() {
-  try {
-    let credentials = DEFAULT_DEMO_CREDENTIALS;
-    try {
-      const res = await fetch('/api/auth/credentials');
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.credentials && data.credentials.length > 0) {
-          credentials = data.credentials;
-        }
-      }
-    } catch (netErr) {
-      console.warn('API credentials fetch fallback to local list:', netErr);
-    }
-
-    const container = document.getElementById('modalContainer');
-    if (!container) return;
-
-    const currentEmail = state.currentUser ? state.currentUser.email : '';
-
-    container.innerHTML = `
-      <div class="login-modal-box">
-        <div class="login-modal-header">
-          <div>
-            <h3 class="login-modal-title">🔐 Settlement Engine Authentication</h3>
-            <p class="login-modal-sub">Select any role below for instant 1-click login, or type credentials manually</p>
-          </div>
-          <button class="modal-close-btn" onclick="closeModal()">×</button>
-        </div>
-        
-        <div class="login-modal-body">
-          <div class="cred-picker-title">⚡ Available Event Roles (1-Click Login)</div>
-          <div class="cred-grid">
-            ${credentials.map(c => {
-              const isCurrent = currentEmail && c.email.toLowerCase() === currentEmail.toLowerCase();
-              const badgeClass = 
-                c.role === 'super_admin' ? 'cred-badge-admin' :
-                c.role === 'billing_staff' ? 'cred-badge-billing' :
-                c.role === 'finance' ? 'cred-badge-finance' : 'cred-badge-viewer';
-              return `
-                <div class="cred-card ${isCurrent ? 'active-user' : ''}" onclick="quickFillAndLogin('${c.email}', '${c.password}')">
-                  <div class="cred-card-top">
-                    <span class="cred-role-badge ${badgeClass}">${c.roleLabel}</span>
-                    ${isCurrent ? '<span style="font-size: 0.68rem; font-weight: 700; color: var(--notion-primary);">● Active</span>' : ''}
-                  </div>
-                  <span class="cred-user-name">${c.name}</span>
-                  <span class="cred-user-email">✉ ${c.email}</span>
-                  <div style="font-family: var(--font-mono); font-size: 0.7rem; color: var(--notion-secondary);">🔑 ${c.password}</div>
-                  <p class="cred-user-desc">${c.desc}</p>
-                  <div class="cred-quick-btn">
-                    <span>⚡ 1-Click Login</span> <span>→</span>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-
-          <div class="login-divider">OR SIGN IN MANUALLY</div>
-
-          <form onsubmit="handleManualLogin(event)" class="login-form">
-            <div class="login-field">
-              <label for="loginEmail">Email Address</label>
-              <input type="email" id="loginEmail" placeholder="admin@halfpe.com" required autocomplete="username" />
-            </div>
-            <div class="login-field">
-              <label for="loginPassword">Password</label>
-              <input type="password" id="loginPassword" placeholder="admin@2026" required autocomplete="current-password" />
-            </div>
-            <button type="submit" class="btn btn-primary btn-block" style="margin-top: 8px;">
-              Log In to HalfPe Engine
-            </button>
-          </form>
-        </div>
-      </div>
-    `;
-    container.classList.remove('hidden');
-
-    // GSAP entrance animation on modal dialog
-    if (typeof gsap !== 'undefined') {
-      gsap.from('.login-modal-box', {
-        opacity: 0,
-        y: 20,
-        scale: 0.95,
-        duration: 0.25,
-        ease: 'power2.out'
-      });
-    }
-  } catch (err) {
-    toast('Failed to load credentials: ' + err.message, 'error');
+function handleUserAuthClick() {
+  if (state.currentUser) {
+    openUserProfileModal();
+  } else {
+    openLoginModal();
   }
 }
 
-function quickFillAndLogin(email, password) {
-  const emailInput = document.getElementById('loginEmail');
-  const passInput = document.getElementById('loginPassword');
-  if (emailInput && passInput) {
-    emailInput.value = email;
-    passInput.value = password;
+function openUserProfileModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container || !state.currentUser) return;
+
+  const u = state.currentUser;
+  const initial = (u.name || 'U').trim().charAt(0).toUpperCase();
+
+  container.innerHTML = `
+    <div class="login-modal-box" style="max-width: 420px;">
+      <div class="login-modal-header">
+        <div>
+          <h3 class="login-modal-title">👤 Account Profile</h3>
+          <p class="login-modal-sub">Signed in to HalfPe Settlement Engine</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+      <div class="login-modal-body" style="padding: 24px;">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 20px;">
+          <div class="user-avatar-circle" style="width: 52px; height: 52px; font-size: 1.3rem;">${initial}</div>
+          <div>
+            <div style="font-weight: 700; font-size: 1.15rem; color: var(--text-primary);">${u.name}</div>
+            <div style="color: var(--text-muted); font-size: 0.85rem;">${u.email}</div>
+          </div>
+        </div>
+        <div style="margin-bottom: 24px; padding: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); border-radius: 8px;">
+          <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Assigned Role</div>
+          <span class="badge badge-status-paid" style="font-size: 0.85rem; padding: 4px 10px;">${(u.role || 'Admin').toUpperCase()}</span>
+        </div>
+        <button class="btn btn-danger-outline btn-block" style="padding: 10px;" onclick="logout()">
+          🚪 Sign Out
+        </button>
+      </div>
+    </div>
+  `;
+  container.classList.remove('hidden');
+}
+
+function openLoginModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="login-modal-box" style="max-width: 440px;">
+      <div class="login-modal-header">
+        <div>
+          <h3 class="login-modal-title">🔐 Settlement Engine Sign In</h3>
+          <p class="login-modal-sub">Enter your email and password to access dashboard</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+      
+      <div class="login-modal-body" style="padding: 24px;">
+        <form onsubmit="handleManualLogin(event)" class="login-form">
+          <div class="login-field" style="margin-bottom: 16px;">
+            <label for="loginEmail" style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 6px;">Email Address</label>
+            <input type="email" id="loginEmail" placeholder="e.g. admin@halfpe.com" required autocomplete="username" 
+              style="width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-card); color: var(--text-primary);" />
+          </div>
+          <div class="login-field" style="margin-bottom: 20px;">
+            <label for="loginPassword" style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 6px;">Password</label>
+            <div style="position: relative;">
+              <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password" 
+                style="width: 100%; padding: 10px 38px 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-card); color: var(--text-primary);" />
+              <button type="button" onclick="togglePasswordVisibility()" title="Show/Hide Password"
+                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 1rem; opacity: 0.7;">
+                👁️
+              </button>
+            </div>
+          </div>
+          <button type="submit" id="btnSubmitLogin" class="btn btn-primary btn-block" style="padding: 12px; font-weight: 600; font-size: 0.95rem;">
+            Sign In to Dashboard
+          </button>
+        </form>
+
+        <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border-color); font-size: 0.75rem; color: var(--text-muted); text-align: center; line-height: 1.5;">
+          <span>Authorized Event Accounts:</span><br>
+          <code style="color: #60A5FA;">admin@halfpe.com</code> · <code style="color: #34D399;">billing@halfpe.com</code> · <code style="color: #FBBF24;">finance@halfpe.com</code>
+        </div>
+      </div>
+    </div>
+  `;
+  container.classList.remove('hidden');
+
+  if (typeof gsap !== 'undefined') {
+    gsap.from('.login-modal-box', {
+      opacity: 0,
+      y: 20,
+      scale: 0.95,
+      duration: 0.25,
+      ease: 'power2.out'
+    });
   }
-  executeLogin(email, password);
+
+  // Focus email input
+  setTimeout(() => {
+    const el = document.getElementById('loginEmail');
+    if (el) el.focus();
+  }, 100);
+}
+
+function togglePasswordVisibility() {
+  const pInput = document.getElementById('loginPassword');
+  if (!pInput) return;
+  pInput.type = pInput.type === 'password' ? 'text' : 'password';
+}
+
+async function logout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } catch (e) {}
+  state.currentUser = null;
+  try {
+    localStorage.removeItem('hp_session_user');
+  } catch (e) {}
+  closeModal();
+  updateUserChipUI();
+  toast('Signed out successfully.', 'info');
+  renderMain();
 }
 
 function handleManualLogin(e) {
@@ -502,33 +547,19 @@ function switchMainTab(tab) {
   state.activeTab = tab;
   state.selectedVendorId = null;
 
-  // 1. Sync Desktop tabs
+  // 1. Sync Desktop tabs (Simplified to 2 Primary Dashboards)
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  const activeBtn = document.getElementById(
-    tab === 'vendors' ? 'tabVendors' :
-    tab === 'recon' ? 'tabRecon' :
-    tab === 'exceptions' ? 'tabExceptions' : 'tabGlobalAudit'
-  );
+  const activeBtn = document.getElementById(tab === 'overall' ? 'tabOverall' : 'tabVendors');
   if (activeBtn) activeBtn.classList.add('active');
 
   // 2. Sync Mobile Bottom Nav
   document.querySelectorAll('.mobile-nav-btn').forEach(b => b.classList.remove('active'));
-  const bNavBtn = document.getElementById(
-    tab === 'vendors' ? 'bNavVendors' :
-    tab === 'recon' ? 'bNavRecon' :
-    tab === 'exceptions' ? 'bNavExceptions' :
-    tab === 'globalAudit' ? 'bNavAudit' : null
-  );
+  const bNavBtn = document.getElementById(tab === 'overall' ? 'bNavOverall' : 'bNavVendors');
   if (bNavBtn) bNavBtn.classList.add('active');
 
   // 3. Sync Mobile Drawer items
   document.querySelectorAll('.drawer-nav-item').forEach(d => d.classList.remove('active'));
-  const drawerBtn = document.getElementById(
-    tab === 'vendors' ? 'mDrawerVendors' :
-    tab === 'recon' ? 'mDrawerRecon' :
-    tab === 'exceptions' ? 'mDrawerExceptions' :
-    tab === 'globalAudit' ? 'mDrawerGlobalAudit' : null
-  );
+  const drawerBtn = document.getElementById(tab === 'overall' ? 'mDrawerOverall' : 'mDrawerVendors');
   if (drawerBtn) drawerBtn.classList.add('active');
 
   // 4. GSAP transition on page content
@@ -542,15 +573,180 @@ function switchMainTab(tab) {
 function renderMain() {
   if (state.selectedVendorId) {
     renderVendorDetailView();
-  } else if (state.activeTab === 'vendors') {
+  } else if (state.activeTab === 'overall') {
+    renderOverallSettlementView();
+  } else {
     renderVendorsListView();
-  } else if (state.activeTab === 'recon') {
-    renderReconView();
-  } else if (state.activeTab === 'exceptions') {
-    renderExceptionsView();
-  } else if (state.activeTab === 'globalAudit') {
-    renderGlobalAuditView();
   }
+}
+
+async function renderOverallSettlementView() {
+  if (!state.vendorsData) {
+    await loadVendorsSummary();
+    return;
+  }
+  const { eventTotals } = state.vendorsData;
+
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+
+  // Fetch daily reconciliation and day locks
+  let dailyRecon = [];
+  let dayLocks = [];
+  try {
+    const [reconRes, locksRes] = await Promise.all([
+      fetch('/api/reports/daily-payment-modes'),
+      fetch('/api/day-locks')
+    ]);
+    dailyRecon = await reconRes.json();
+    dayLocks = await locksRes.json();
+  } catch (e) {
+    console.warn('Reconciliation fetch error:', e);
+  }
+
+  const totalCash = dailyRecon.reduce((s, d) => s + (d.cashTotal || 0), 0);
+  const totalOnline = dailyRecon.reduce((s, d) => s + (d.onlineTotal || 0), 0);
+
+  main.innerHTML = `
+    <!-- Top Overall Settlement Header -->
+    <div class="panel-header" style="margin-bottom: 20px;">
+      <div>
+        <h1 style="font-size: 1.5rem; font-weight: 700; margin: 0 0 4px 0;">📊 Overall Settlement Dashboard</h1>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0;">
+          Consolidated financial overview, settlement audit & single billing desk reconciliation
+        </p>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-outline btn-sm" onclick="exportVendorsCSV()">
+          📊 Export CSV / Excel
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="refreshDashboard()">
+          🔄 Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Executive KPI Cards Grid (Section 6.2) -->
+    <div class="summary-cards-grid">
+      <div class="summary-card">
+        <span class="summary-card-label">Total Bills (Orders) <span>📦</span></span>
+        <span class="summary-card-value">${eventTotals.totalOrders}</span>
+        <span class="summary-card-sub">Active bills recorded</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-card-label">Gross Sales <span>💰</span></span>
+        <span class="summary-card-value">${formatINR(eventTotals.grossSales)}</span>
+        <span class="summary-card-sub">Total sales before returns</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-card-label">Total Returns <span>↩️</span></span>
+        <span class="summary-card-value" style="color: var(--notion-red);">-${formatINR(eventTotals.totalReturns)}</span>
+        <span class="summary-card-sub">Refunds processed</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-card-label">Net Sales <span>📈</span></span>
+        <span class="summary-card-value" style="color: var(--notion-blue);">${formatINR(eventTotals.netSales)}</span>
+        <span class="summary-card-sub">Gross minus returns</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-card-label">Total Commission <span>🏷️</span></span>
+        <span class="summary-card-value" style="color: var(--notion-purple);">${formatINR(eventTotals.totalCommission)}</span>
+        <span class="summary-card-sub">HalfPe 15% event fee</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-card-label">Settlement Payable <span>⚖️</span></span>
+        <span class="summary-card-value" style="color: var(--notion-green);">${formatINR(eventTotals.settlementPayable)}</span>
+        <span class="summary-card-sub">Net sales - commission</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-card-label">Already Paid <span>✅</span></span>
+        <span class="summary-card-value" style="color: var(--notion-blue);">${formatINR(eventTotals.alreadyPaid)}</span>
+        <span class="summary-card-sub">Disbursed via bank</span>
+      </div>
+      <div class="summary-card" style="border-left: 3px solid var(--notion-yellow);">
+        <span class="summary-card-label">Balance to Pay <span>⏳</span></span>
+        <span class="summary-card-value" style="color: var(--notion-yellow);">${formatINR(eventTotals.balanceToPay)}</span>
+        <span class="summary-card-sub">Remaining balance</span>
+      </div>
+    </div>
+
+    <!-- Payment Channel Breakdown -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 24px 0;">
+      <div class="summary-card" style="background: rgba(34, 197, 94, 0.04); border-color: rgba(34, 197, 94, 0.2);">
+        <span class="summary-card-label">Counter Cash Collection <span>💵</span></span>
+        <span class="summary-card-value" style="color: #34D399;">${formatINR(totalCash)}</span>
+        <span class="summary-card-sub">Collected at physical counter</span>
+      </div>
+      <div class="summary-card" style="background: rgba(59, 130, 246, 0.04); border-color: rgba(59, 130, 246, 0.2);">
+        <span class="summary-card-label">Razorpay / Shopify Online <span>💳</span></span>
+        <span class="summary-card-value" style="color: #60A5FA;">${formatINR(totalOnline)}</span>
+        <span class="summary-card-sub">Settled via digital gateways</span>
+      </div>
+    </div>
+
+    <!-- Daily Reconciliation & Day Locks Table -->
+    <div class="panel" style="margin-top: 20px;">
+      <div class="panel-header">
+        <div class="panel-title-group">
+          <h2 class="panel-title">Daily Cash vs Online Counter Reconciliation & Day Locks</h2>
+          <span class="badge badge-source-auto">Single Billing Desk</span>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Date (Event Day)</th>
+              <th>Total Orders</th>
+              <th>Cash Collected</th>
+              <th>Razorpay Online</th>
+              <th>Daily Total</th>
+              <th>Day Settlement Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${dailyRecon.length === 0 ? `
+              <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">No daily sales recorded yet.</td></tr>
+            ` : dailyRecon.map(d => {
+              const lock = dayLocks.find(l => l.date === d.date && l.isLocked);
+              return `
+                <tr>
+                  <td><strong style="font-family: var(--font-mono);">${d.date}</strong></td>
+                  <td class="font-mono">${d.orders}</td>
+                  <td class="font-mono" style="color: #FBBF24;">${formatINR(d.cashTotal)}</td>
+                  <td class="font-mono" style="color: #60A5FA;">${formatINR(d.onlineTotal)}</td>
+                  <td class="font-mono" style="color: #34D399; font-weight: 700;">${formatINR(d.totalAmount)}</td>
+                  <td>
+                    ${lock ? `
+                      <span class="badge badge-status-voided">🔒 LOCKED BY ${lock.lockedBy}</span>
+                    ` : `
+                      <span class="badge badge-status-paid">🔓 ACTIVE (OPEN)</span>
+                    `}
+                  </td>
+                  <td>
+                    ${lock ? `
+                      ${getUserRole() === 'super_admin' ? `
+                        <button class="btn btn-outline btn-sm" onclick="toggleDayLock('${d.date}', false)">
+                          🔓 Unlock Day (Super Admin)
+                        </button>
+                      ` : `<span style="font-size: 0.75rem; color: var(--text-muted);">Locked (Requires Super Admin)</span>`}
+                    ` : `
+                      ${(getUserRole() === 'finance' || getUserRole() === 'super_admin') ? `
+                        <button class="btn btn-danger-outline btn-sm" onclick="toggleDayLock('${d.date}', true)">
+                          🔒 Mark Settled & Lock Day
+                        </button>
+                      ` : `<span style="font-size: 0.75rem; color: var(--text-muted);">Requires Finance</span>`}
+                    `}
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 async function refreshDashboard() {
