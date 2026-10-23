@@ -390,25 +390,38 @@ body {
 -------------------------------------------------------------- */
 .summary-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  margin-bottom: 28px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+  .summary-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (max-width: 580px) {
+  .summary-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
 }
 
 .summary-card {
   background: var(--notion-surface);
   border-radius: var(--radius-md);
-  padding: 18px 20px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--notion-hairline);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
 }
 
 .summary-card:hover {
@@ -417,7 +430,7 @@ body {
 }
 
 .summary-card-label {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -428,22 +441,25 @@ body {
 }
 
 .summary-card-value {
-  font-size: clamp(1.1rem, 2.2vw, 1.75rem);
+  font-size: clamp(1.05rem, 1.4vw, 1.42rem);
   font-weight: 700;
   color: var(--notion-ink);
-  letter-spacing: -0.035em;
+  letter-spacing: -0.025em;
   font-feature-settings: "tnum" 1, "cv05" 1;
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  white-space: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .summary-card-sub {
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   color: var(--notion-muted);
   font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Subtle Highlights for Payable & Balance */
@@ -559,12 +575,30 @@ body {
 .table-responsive {
   overflow-x: auto;
   width: 100%;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  scrollbar-width: thin;
+}
+
+.table-responsive::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: var(--notion-surface-warm);
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
 }
 
 .data-table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.84rem;
+  min-width: 1220px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.81rem;
   text-align: left;
 }
 
@@ -572,19 +606,49 @@ body {
   background: var(--notion-surface-warm);
   color: var(--notion-secondary);
   font-weight: 600;
-  font-size: 0.72rem;
+  font-size: 0.70rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: 12px 18px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--notion-hairline);
   white-space: nowrap;
 }
 
 .data-table td {
-  padding: 13px 18px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--notion-hairline-subtle);
   color: var(--notion-text);
   vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Sticky right Action column so View Details is ALWAYS visible and never clipped */
+.data-table th:last-child,
+.data-table td:last-child,
+.data-table tfoot td:last-child {
+  position: sticky;
+  right: 0;
+  background: #FFFFFF;
+  box-shadow: -4px 0 8px rgba(0, 0, 0, 0.06);
+  z-index: 2;
+  text-align: center;
+  min-width: 135px;
+  padding: 8px 14px;
+  white-space: nowrap;
+}
+
+.data-table th:last-child {
+  background: var(--notion-surface-warm);
+  z-index: 3;
+}
+
+.data-table tfoot td:last-child {
+  background: var(--notion-surface-warm);
+  z-index: 2;
+}
+
+.data-table tbody tr:hover td:last-child {
+  background-color: var(--notion-surface-card);
 }
 
 .data-table tbody tr {
@@ -612,9 +676,22 @@ body {
   background: var(--notion-surface-warm);
   font-weight: 700;
   border-top: 2px solid var(--notion-hairline);
-  padding: 14px 18px;
+  padding: 12px 14px;
   color: var(--notion-ink);
   font-feature-settings: "tnum" 1, "cv05" 1;
+  white-space: nowrap;
+}
+
+.btn-view-details {
+  white-space: nowrap !important;
+  padding: 6px 14px !important;
+  font-size: 0.78rem !important;
+  font-weight: 600 !important;
+  min-width: 110px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: var(--radius-sm) !important;
 }
 
 .font-mono {
@@ -1731,7 +1808,7 @@ body {
 
   /* Summary Metrics: 2 columns on mobile */
   .summary-cards-grid, .metrics-summary-grid {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 10px;
     margin-bottom: 16px;
   }
@@ -1745,10 +1822,11 @@ body {
   }
 
   .summary-card-value, .metric-card-value {
-    font-size: clamp(1rem, 3.8vw, 1.35rem);
+    font-size: clamp(0.95rem, 3.2vw, 1.22rem);
     line-height: 1.25;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
   }
 
@@ -1777,13 +1855,13 @@ body {
   .data-table th {
     white-space: nowrap;
     padding: 8px 10px;
-    font-size: 0.72rem;
+    font-size: 0.70rem;
   }
 
   .data-table td {
     white-space: nowrap;
-    padding: 10px;
-    font-size: 0.8rem;
+    padding: 9px 10px;
+    font-size: 0.78rem;
   }
 
   /* Modal responsive sizing */
@@ -1821,10 +1899,11 @@ body {
   }
 
   .summary-card-value, .metric-card-value {
-    font-size: clamp(1.1rem, 5vw, 1.45rem);
+    font-size: clamp(1.05rem, 4.5vw, 1.35rem);
     line-height: 1.25;
-    overflow-wrap: anywhere;
-    word-break: break-word;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-variant-numeric: tabular-nums;
   }
 

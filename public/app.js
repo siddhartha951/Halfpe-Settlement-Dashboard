@@ -964,7 +964,7 @@ function renderVendorTableRowHTML(item) {
         </span>
       </td>
       <td>
-        <button class="btn btn-primary btn-sm" onclick="selectVendor('${item.vendor.id}')">
+        <button class="btn btn-primary btn-sm btn-view-details" onclick="selectVendor('${item.vendor.id}')">
           View Details →
         </button>
       </td>
