@@ -41,6 +41,9 @@ const state = {
   searchQuery: '',
   statusFilter: 'all',
   vendorDateFilter: 'all',
+  // Vendor Drilldown Filters (Phase 6: Group A & Group B)
+  vendorFilterGroupA: 'all', // 'all', 'paid', 'returns', 'cod'
+  vendorFilterGroupB: 'all', // 'all', 'paid', 'partially_paid', 'not_yet_paid'
   unmaskedPhones: new Set(),
   // Date filtering state (simplified to Yesterday, Today, Custom with Asia/Kolkata bounds)
   dateFilterMode: 'custom',
@@ -148,6 +151,9 @@ async function init() {
   window.applyCustomDateRange = applyCustomDateRange;
   window.handleCustomStartDateChange = handleCustomStartDateChange;
   window.handleCustomEndDateChange = handleCustomEndDateChange;
+  window.setVendorFilterGroupA = setVendorFilterGroupA;
+  window.setVendorFilterGroupB = setVendorFilterGroupB;
+  window.clearVendorFilters = clearVendorFilters;
 }
 
 function updateUserChipUI() {
@@ -1171,6 +1177,8 @@ function handleStatusFilter(val) {
 async function selectVendor(vendorId) {
   state.selectedVendorId = vendorId;
   state.vendorDetailSubTab = 'bills';
+  state.vendorFilterGroupA = 'all';
+  state.vendorFilterGroupB = 'all';
   await loadVendorDetail(vendorId);
 }
 
@@ -1197,6 +1205,8 @@ async function loadVendorDetail(vendorId) {
 
 function closeVendorDetail() {
   state.selectedVendorId = null;
+  state.vendorFilterGroupA = 'all';
+  state.vendorFilterGroupB = 'all';
   loadVendorsSummary();
 }
 
@@ -1205,22 +1215,86 @@ function switchDetailSubTab(subTab) {
   renderVendorDetailView();
 }
 
+function setVendorFilterGroupA(mode) {
+  state.vendorFilterGroupA = mode;
+  if (mode === 'returns') {
+    state.vendorDetailSubTab = 'returns';
+  } else if (state.vendorDetailSubTab === 'returns' && mode !== 'all') {
+    state.vendorDetailSubTab = 'bills';
+  }
+  renderVendorDetailView();
+}
+
+function setVendorFilterGroupB(mode) {
+  state.vendorFilterGroupB = mode;
+  renderVendorDetailView();
+}
+
+function clearVendorFilters() {
+  state.vendorFilterGroupA = 'all';
+  state.vendorFilterGroupB = 'all';
+  renderVendorDetailView();
+}
+
 function renderVendorDetailView() {
   if (!state.selectedVendorData) return;
   const d = state.selectedVendorData;
   const v = d.vendor;
 
-  // Filter bills by date if needed
-  let visibleBills = d.bills;
-  if (state.vendorDateFilter !== 'all') {
-    visibleBills = visibleBills.filter(b => b.createdAt.startsWith(state.vendorDateFilter));
+  // 1. Determine vendor's actual master payout status
+  const originalPayable = d.settlementPayable || 0;
+  const originalPaid = d.alreadyPaid || 0;
+  let vendorPayoutStatus = 'not_yet_paid';
+  if (originalPaid >= originalPayable && originalPayable > 0) {
+    vendorPayoutStatus = 'paid';
+  } else if (originalPaid > 0) {
+    vendorPayoutStatus = 'partially_paid';
   }
 
-  // Calculate cash vs online breakdown for this vendor
-  const cashTotal = visibleBills.filter(b => !b.isVoid && b.paymentMode.toLowerCase().includes('cash'))
+  // 2. Filter Group A (Transaction / Payment Mode)
+  let visibleBills = [...d.bills];
+  let visibleReturns = [...d.returns];
+  let visiblePayouts = [...d.payouts];
+
+  if (state.vendorFilterGroupA === 'paid') {
+    visibleBills = visibleBills.filter(b => b.status === 'Paid' && !b.isVoid);
+    visibleReturns = [];
+  } else if (state.vendorFilterGroupA === 'returns') {
+    visibleBills = visibleBills.filter(b => b.status && b.status.toLowerCase().includes('return'));
+  } else if (state.vendorFilterGroupA === 'cod') {
+    visibleBills = visibleBills.filter(b => !b.isVoid && (b.paymentMode || '').toLowerCase().includes('cash'));
+    visibleReturns = [];
+  }
+
+  // 3. Filter Group B (Vendor Payout Status)
+  let groupBMatches = true;
+  if (state.vendorFilterGroupB !== 'all') {
+    if (state.vendorFilterGroupB !== vendorPayoutStatus) {
+      groupBMatches = false;
+      visibleBills = [];
+      visibleReturns = [];
+      visiblePayouts = [];
+    }
+  }
+
+  // 4. Dynamic Recalculation of Vendor Overview Cards
+  const calcOrdersCount = visibleBills.length;
+  const calcGrossSales = visibleBills.reduce((s, b) => s + (b.isVoid ? 0 : b.billAmount), 0);
+  const calcReturnsCount = visibleReturns.length;
+  const calcReturnsAmount = visibleReturns.reduce((s, r) => s + (r.amount || 0), 0);
+  const calcNetSales = Math.max(0, calcGrossSales - calcReturnsAmount);
+  const calcCommission = Number((calcNetSales * (v.commissionPct / 100)).toFixed(2));
+  const calcSettlementPayable = Number((calcNetSales - calcCommission).toFixed(2));
+  const calcAlreadyPaid = visiblePayouts.reduce((s, p) => s + (p.amount || 0), 0);
+  const calcBalanceToPay = Number((calcSettlementPayable - calcAlreadyPaid).toFixed(2));
+
+  // Cash vs Online for visible bills
+  const cashTotal = visibleBills.filter(b => !b.isVoid && (b.paymentMode || '').toLowerCase().includes('cash'))
     .reduce((s, b) => s + b.billAmount, 0);
-  const onlineTotal = visibleBills.filter(b => !b.isVoid && !b.paymentMode.toLowerCase().includes('cash'))
+  const onlineTotal = visibleBills.filter(b => !b.isVoid && !(b.paymentMode || '').toLowerCase().includes('cash'))
     .reduce((s, b) => s + b.billAmount, 0);
+
+  const activeFilterCount = (state.vendorFilterGroupA !== 'all' ? 1 : 0) + (state.vendorFilterGroupB !== 'all' ? 1 : 0);
 
   const main = document.getElementById('mainContent');
   main.innerHTML = `
@@ -1268,46 +1342,102 @@ function renderVendorDetailView() {
       </div>
     </div>
 
-    <!-- Vendor Overview Cards (Section 6.3) -->
+    <!-- Vendor Detail Filters (Bug 4: Separate Group A & Group B) -->
+    <div class="vendor-filters-panel">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px;">
+          <!-- Group A: Transaction / Customer Payment Filter -->
+          <div class="filter-group">
+            <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--notion-secondary);">
+              🏷️ Group A (Transaction):
+            </span>
+            <div class="btn-group-pill">
+              <button class="filter-pill ${state.vendorFilterGroupA === 'all' ? 'active' : ''}" onclick="setVendorFilterGroupA('all')">All</button>
+              <button class="filter-pill ${state.vendorFilterGroupA === 'paid' ? 'active' : ''}" onclick="setVendorFilterGroupA('paid')">Paid</button>
+              <button class="filter-pill ${state.vendorFilterGroupA === 'returns' ? 'active' : ''}" onclick="setVendorFilterGroupA('returns')">Returns</button>
+              <button class="filter-pill ${state.vendorFilterGroupA === 'cod' ? 'active' : ''}" onclick="setVendorFilterGroupA('cod')">COD (Cash)</button>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div style="width: 1px; height: 22px; background: var(--notion-hairline);" class="desktop-only"></div>
+
+          <!-- Group B: Vendor Payout Status Filter -->
+          <div class="filter-group">
+            <span style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: var(--notion-secondary);">
+              💳 Group B (Payout Status):
+            </span>
+            <div class="btn-group-pill">
+              <button class="filter-pill ${state.vendorFilterGroupB === 'all' ? 'active' : ''}" onclick="setVendorFilterGroupB('all')">All</button>
+              <button class="filter-pill ${state.vendorFilterGroupB === 'paid' ? 'active' : ''}" onclick="setVendorFilterGroupB('paid')">Paid</button>
+              <button class="filter-pill ${state.vendorFilterGroupB === 'partially_paid' ? 'active' : ''}" onclick="setVendorFilterGroupB('partially_paid')">Partially Paid</button>
+              <button class="filter-pill ${state.vendorFilterGroupB === 'not_yet_paid' ? 'active' : ''}" onclick="setVendorFilterGroupB('not_yet_paid')">Not Yet Paid</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Count & Clear Button -->
+        <div style="display: flex; align-items: center; gap: 10px; margin-left: auto;">
+          ${activeFilterCount > 0 ? `
+            <span class="badge badge-source-manual" style="font-size: 0.72rem;">
+              ${activeFilterCount} Active Filter${activeFilterCount > 1 ? 's' : ''}
+            </span>
+            <button class="btn btn-outline btn-xs" onclick="clearVendorFilters()" style="color: var(--notion-red); font-weight: 600;">
+              ✕ Clear Filters
+            </button>
+          ` : `
+            <span style="font-size: 0.72rem; color: var(--notion-muted);">All Filters Reset</span>
+          `}
+        </div>
+      </div>
+    </div>
+
+    ${!groupBMatches ? `
+      <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 20px; color: #DC2626; font-size: 0.82rem;">
+        ⚠️ <strong>Group B Filter Mismatch:</strong> This vendor's actual payout status is <strong>${vendorPayoutStatus.replace('_', ' ').toUpperCase()}</strong> (Paid: ${formatINR(d.alreadyPaid)} / Balance: ${formatINR(d.balanceToPay)}), which does not match filter "<strong>${state.vendorFilterGroupB.replace('_', ' ').toUpperCase()}</strong>". Click "Clear Filters" to view records.
+      </div>
+    ` : ''}
+
+    <!-- Vendor Overview Cards (Dynamically Recalculated for Filtered Subset) -->
     <div class="summary-cards-grid">
       <div class="summary-card">
         <span class="summary-card-label">Total Bills (Orders)</span>
-        <span class="summary-card-value">${d.ordersCount}</span>
-        <span class="summary-card-sub">Active bills for vendor</span>
+        <span class="summary-card-value">${calcOrdersCount}</span>
+        <span class="summary-card-sub">${activeFilterCount > 0 ? 'Filtered bills count' : 'Active bills for vendor'}</span>
       </div>
       <div class="summary-card">
         <span class="summary-card-label">Total Amount (Gross)</span>
-        <span class="summary-card-value">${formatINR(d.grossSales)}</span>
-        <span class="summary-card-sub">Sum of unvoided bills</span>
+        <span class="summary-card-value">${formatINR(calcGrossSales)}</span>
+        <span class="summary-card-sub">${activeFilterCount > 0 ? 'Filtered gross sales' : 'Sum of unvoided bills'}</span>
       </div>
       <div class="summary-card">
         <span class="summary-card-label">Total Returns</span>
-        <span class="summary-card-value" style="color: var(--notion-red);">-${formatINR(d.returnsAmount)}</span>
-        <span class="summary-card-sub">${d.returnsCount} returns recorded</span>
+        <span class="summary-card-value" style="color: var(--notion-red);">-${formatINR(calcReturnsAmount)}</span>
+        <span class="summary-card-sub">${calcReturnsCount} returns recorded</span>
       </div>
       <div class="summary-card">
         <span class="summary-card-label">Net Sales</span>
-        <span class="summary-card-value">${formatINR(d.netSales)}</span>
+        <span class="summary-card-value">${formatINR(calcNetSales)}</span>
         <span class="summary-card-sub">Gross minus returns</span>
       </div>
       <div class="summary-card">
         <span class="summary-card-label">HalfPe Commission</span>
-        <span class="summary-card-value" style="color: var(--notion-secondary);">${formatINR(d.commissionAmount)}</span>
+        <span class="summary-card-value" style="color: var(--notion-secondary);">${formatINR(calcCommission)}</span>
         <span class="summary-card-sub">Net Sales × ${v.commissionPct}%</span>
       </div>
       <div class="summary-card card-highlight-payable">
         <span class="summary-card-label">Settlement Payable</span>
-        <span class="summary-card-value">${formatINR(d.settlementPayable)}</span>
+        <span class="summary-card-value">${formatINR(calcSettlementPayable)}</span>
         <span class="summary-card-sub">Net Sales minus commission</span>
       </div>
       <div class="summary-card">
         <span class="summary-card-label">Already Paid</span>
-        <span class="summary-card-value" style="color: var(--notion-primary);">${formatINR(d.alreadyPaid)}</span>
-        <span class="summary-card-sub">${d.payouts.length} payouts logged</span>
+        <span class="summary-card-value" style="color: var(--notion-primary);">${formatINR(calcAlreadyPaid)}</span>
+        <span class="summary-card-sub">${visiblePayouts.length} payouts logged</span>
       </div>
       <div class="summary-card card-highlight-balance">
         <span class="summary-card-label">Balance to Pay</span>
-        <span class="summary-card-value">${formatINR(d.balanceToPay)}</span>
+        <span class="summary-card-value">${formatINR(calcBalanceToPay)}</span>
         <span class="summary-card-sub">Remaining to disburse</span>
       </div>
     </div>
@@ -1318,10 +1448,10 @@ function renderVendorDetailView() {
         📋 Orders & Bills Ledger (${visibleBills.length})
       </button>
       <button class="sub-tab ${state.vendorDetailSubTab === 'returns' ? 'active' : ''}" onclick="switchDetailSubTab('returns')">
-        ↩️ Returns Management (${d.returns.length})
+        ↩️ Returns Management (${visibleReturns.length})
       </button>
       <button class="sub-tab ${state.vendorDetailSubTab === 'payouts' ? 'active' : ''}" onclick="switchDetailSubTab('payouts')">
-        💳 Payout History (${d.payouts.length})
+        💳 Payout History (${visiblePayouts.length})
       </button>
       <button class="sub-tab ${state.vendorDetailSubTab === 'audit' ? 'active' : ''}" onclick="switchDetailSubTab('audit')">
         📜 Vendor Audit History (${d.auditHistory.length})
@@ -1330,8 +1460,8 @@ function renderVendorDetailView() {
 
     <!-- Sub Tab Contents -->
     ${state.vendorDetailSubTab === 'bills' ? renderBillsLedgerTab(visibleBills, v.id) : ''}
-    ${state.vendorDetailSubTab === 'returns' ? renderReturnsTab(d.returns, v.id) : ''}
-    ${state.vendorDetailSubTab === 'payouts' ? renderPayoutsTab(d.payouts, v.id, d.balanceToPay) : ''}
+    ${state.vendorDetailSubTab === 'returns' ? renderReturnsTab(visibleReturns, v.id) : ''}
+    ${state.vendorDetailSubTab === 'payouts' ? renderPayoutsTab(visiblePayouts, v.id, calcBalanceToPay) : ''}
     ${state.vendorDetailSubTab === 'audit' ? renderVendorAuditTab(d.auditHistory) : ''}
   `;
 }

@@ -570,6 +570,60 @@ body {
 }
 
 /* -------------------------------------------------------------
+   Vendor Detail Filter Groups (Phase 6: Bug 4)
+-------------------------------------------------------------- */
+.vendor-filters-panel {
+  background: var(--notion-surface);
+  border: 1px solid var(--notion-hairline);
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-soft);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-group-pill {
+  display: inline-flex;
+  background: var(--notion-surface-warm);
+  border: 1px solid var(--notion-hairline);
+  border-radius: 20px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.filter-pill {
+  background: transparent;
+  border: none;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 0.74rem;
+  font-weight: 500;
+  color: var(--notion-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-notion);
+  white-space: nowrap;
+}
+
+.filter-pill:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--notion-ink);
+}
+
+.filter-pill.active {
+  background: var(--notion-ink);
+  color: #FFFFFF;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* -------------------------------------------------------------
    7. Data Tables (Crisp Notion Database Grid)
 -------------------------------------------------------------- */
 .table-responsive {
