@@ -1,0 +1,560 @@
+/*
+ * ------------------------------------------------------------
+ * IMPORTANT: The contents of this file are auto-generated.
+ *
+ * This file may be updated by the Shopify admin theme editor
+ * or related systems. Please exercise caution as any changes
+ * made to this file may be overwritten.
+ * ------------------------------------------------------------
+ */
+{
+  "sections": {
+    "main": {
+      "type": "vijayawada-billing",
+      "blocks": {
+        "stall_Rrttz8": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "01",
+            "vendor_name": "Profit Shoe Company",
+            "vendor_code": "PSC",
+            "category": "Footwear"
+          }
+        },
+        "stall_y6UWer": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "02, 11, 12, 23, 40, 57 & 60",
+            "vendor_name": "Half Price Days Event",
+            "vendor_code": "HPDALL",
+            "category": "Misc"
+          }
+        },
+        "stall_aA37YT": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "03",
+            "vendor_name": "9 to 9 dollar shop",
+            "vendor_code": "NDS",
+            "category": "Gifts and home decor"
+          }
+        },
+        "stall_gWBeYx": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "04",
+            "vendor_name": "Sri kleemkara creations",
+            "vendor_code": "SKC",
+            "category": "Clothing"
+          }
+        },
+        "stall_XJheNy": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "06 & 07",
+            "vendor_name": "D TOWN",
+            "vendor_code": "DTS",
+            "category": "Textiles"
+          }
+        },
+        "stall_ywkARA": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "08",
+            "vendor_name": "Al Zahra Perfumes",
+            "vendor_code": "AZP",
+            "category": "Perfumes"
+          }
+        },
+        "stall_NYzVGc": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "09",
+            "vendor_name": "Aavasa and jyothy cotton",
+            "vendor_code": "AJC",
+            "category": "Sarees & Frocks"
+          }
+        },
+        "stall_FL9AmA": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "14 & 15",
+            "vendor_name": "A Shaw Collection (W.B)",
+            "vendor_code": "SCW",
+            "category": "Jamdani Sarees & Dress"
+          }
+        },
+        "stall_xAripW": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "16",
+            "vendor_name": "G.K.Fashions - Vijayawada",
+            "vendor_code": "GKF",
+            "category": "Women Clothing"
+          }
+        },
+        "stall_EgkHz4": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "17",
+            "vendor_name": "Alaka Fashions",
+            "vendor_code": "ALF",
+            "category": "1 Gram Jewellery"
+          }
+        },
+        "stall_6838MX": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "18 & 19",
+            "vendor_name": "K.K.APPLIANCES",
+            "vendor_code": "KKA",
+            "category": "Kitchenware, Appliances, Giftware, Stablizers"
+          }
+        },
+        "stall_BdPtTh": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "20",
+            "vendor_name": "CHANDRA ELECTRONICS & HOME APPLIANCES",
+            "vendor_code": "CHA",
+            "category": "Electronics & Home Appliances"
+          }
+        },
+        "stall_Mp4gBq": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "21",
+            "vendor_name": "Gallant",
+            "vendor_code": "GAL",
+            "category": "Kids Wear"
+          }
+        },
+        "stall_EYapwe": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "22",
+            "vendor_name": "Kolus Home",
+            "vendor_code": "KLH",
+            "category": "Home decor and wellness products"
+          }
+        },
+        "stall_C6NLPk": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "24",
+            "vendor_name": "Rajasyamala enterprises",
+            "vendor_code": "RSE",
+            "category": "Sarees"
+          }
+        },
+        "stall_tQbeVC": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "25",
+            "vendor_name": "Varaahi (T Devika)",
+            "vendor_code": "VTD",
+            "category": "Sarees"
+          }
+        },
+        "stall_eiL6VR": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "26",
+            "vendor_name": "Sathyam Silks (VIJ EVENT)",
+            "vendor_code": "SSM",
+            "category": "Sarees"
+          }
+        },
+        "stall_73gYnA": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "29",
+            "vendor_name": "SV Customised Charms",
+            "vendor_code": "SVCC",
+            "category": "Customised Gifts & Charms"
+          }
+        },
+        "stall_DzrcGH": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "30",
+            "vendor_name": "S&K Clothing Co.",
+            "vendor_code": "SKC",
+            "category": "Clothing"
+          }
+        },
+        "stall_m6LAim": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "34 & 35",
+            "vendor_name": "Siva Naga jewellery",
+            "vendor_code": "SNJ",
+            "category": "Jewellery"
+          }
+        },
+        "stall_h88BpX": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "36",
+            "vendor_name": "Click2magnet",
+            "vendor_code": "CTM",
+            "category": "Misc."
+          }
+        },
+        "stall_tMKRgB": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "37",
+            "vendor_name": "MK beauty's",
+            "vendor_code": "MKB",
+            "category": "Clothing"
+          }
+        },
+        "stall_cyXFkK": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "38",
+            "vendor_name": "Vinuthna fashions",
+            "vendor_code": "VTF",
+            "category": "Pattu fancy design sarees"
+          }
+        },
+        "stall_raKLy3": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "39",
+            "vendor_name": "Suveda luxury ayurveda",
+            "vendor_code": "SLA",
+            "category": "Organic and ayurvedic cosmotics"
+          }
+        },
+        "stall_FzHdP7": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "41",
+            "vendor_name": "Maa vaarahi collections",
+            "vendor_code": "MVC",
+            "category": "Sarees, dresses, night wear,tops"
+          }
+        },
+        "stall_xFthik": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "42 & 43",
+            "vendor_name": "sri_maguva",
+            "vendor_code": "SMG",
+            "category": "Anti Tarnish Jewellery"
+          }
+        },
+        "stall_3adzwz": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "44 & 45",
+            "vendor_name": "New BAGGAGE stores",
+            "vendor_code": "NBS",
+            "category": "Hand Bags"
+          }
+        },
+        "stall_4bBqGQ": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "46",
+            "vendor_name": "SULEMAN OPTICALS MANGALAGIRI",
+            "vendor_code": "SOM",
+            "category": "Opticals"
+          }
+        },
+        "stall_grFgQb": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "47",
+            "vendor_name": "SULEMAN FASHION'S",
+            "vendor_code": "SLF",
+            "category": "fashion"
+          }
+        },
+        "stall_eyRGzP": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "48 & 49",
+            "vendor_name": "Joshe Boutique",
+            "vendor_code": "JOB",
+            "category": "Ladies wear"
+          }
+        },
+        "stall_jNzD4q": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "50, 51 & 52",
+            "vendor_name": "Nokia footware",
+            "vendor_code": "AAD",
+            "category": "Footware"
+          }
+        },
+        "stall_KHjqLX": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "53",
+            "vendor_name": "Sri Neehalini Saree House",
+            "vendor_code": "SNSH",
+            "category": "Women Wear"
+          }
+        },
+        "stall_qgYkKh": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "54 & 55",
+            "vendor_name": "Murugan Sarees",
+            "vendor_code": "MRS",
+            "category": "Sarees"
+          }
+        },
+        "stall_dae4Un": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "56",
+            "vendor_name": "Kumar Kavitha Nepal Rudraksha (VIJ)",
+            "vendor_code": "KVN",
+            "category": "Spiritual"
+          }
+        },
+        "stall_9d8XzC": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "58",
+            "vendor_name": "Sreematha Sarees",
+            "vendor_code": "SMS",
+            "category": "Sarees"
+          }
+        },
+        "stall_gwLXWz": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "59",
+            "vendor_name": "Shahensha handloom",
+            "vendor_code": "SHH",
+            "category": "Sarees"
+          }
+        },
+        "stall_9Fb6G4": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "61",
+            "vendor_name": "LEATHER WORLD",
+            "vendor_code": "LEW",
+            "category": "Footware"
+          }
+        },
+        "stall_jTpLVG": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "63",
+            "vendor_name": "Tupperware",
+            "vendor_code": "TPW",
+            "category": "Misc."
+          }
+        },
+        "stall_6ig3i6": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "64",
+            "vendor_name": "Gadget store",
+            "vendor_code": "GDS",
+            "category": "Gadgets,toys and wall arts"
+          }
+        },
+        "stall_ihw8gL": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "65 & 66",
+            "vendor_name": "Lakshmi anjaneya bags and fancy",
+            "vendor_code": "LABF",
+            "category": "Bags"
+          }
+        },
+        "stall_CKX4EP": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "68 & 69",
+            "vendor_name": "Kota Sarees",
+            "vendor_code": "KOS",
+            "category": "Sarees"
+          }
+        },
+        "stall_jhNTrn": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "70 & 71",
+            "vendor_name": "Amazing Boutique",
+            "vendor_code": "AMB",
+            "category": "Sarees & Dresses"
+          }
+        },
+        "stall_q339n6": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "72",
+            "vendor_name": "Sadhvi naturals",
+            "vendor_code": "SAN",
+            "category": "Hand crafted hair care and skin care"
+          }
+        },
+        "stall_rFKJFF": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "76",
+            "vendor_name": "Lac bangales costmise live making",
+            "vendor_code": "LBC",
+            "category": "Bangles"
+          }
+        },
+        "stall_Pk9kBz": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "77",
+            "vendor_name": "Vaidya Sri",
+            "vendor_code": "VDS",
+            "category": "Health Care"
+          }
+        },
+        "stall_aw7fjV": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "78, 79 & 80",
+            "vendor_name": "Guntur 99 store (House of return gifts)",
+            "vendor_code": "GNS",
+            "category": "Gifts"
+          }
+        },
+        "stall_mPxX6K": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "81",
+            "vendor_name": "Bhanicollections",
+            "vendor_code": "BHC",
+            "category": "Kalamkaari"
+          }
+        },
+        "stall_NiAXMQ": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "82",
+            "vendor_name": "Lahari designer studio",
+            "vendor_code": "LDS",
+            "category": "Clothing"
+          }
+        },
+        "stall_NQQjjB": {
+          "type": "stall",
+          "settings": {
+            "stall_no": "83",
+            "vendor_name": "Gowtham collections",
+            "vendor_code": "GOC",
+            "category": "Kalamkaari"
+          }
+        }
+      },
+      "block_order": [
+        "stall_Rrttz8",
+        "stall_y6UWer",
+        "stall_aA37YT",
+        "stall_gWBeYx",
+        "stall_XJheNy",
+        "stall_ywkARA",
+        "stall_NYzVGc",
+        "stall_FL9AmA",
+        "stall_xAripW",
+        "stall_EgkHz4",
+        "stall_6838MX",
+        "stall_BdPtTh",
+        "stall_Mp4gBq",
+        "stall_EYapwe",
+        "stall_C6NLPk",
+        "stall_tQbeVC",
+        "stall_eiL6VR",
+        "stall_73gYnA",
+        "stall_DzrcGH",
+        "stall_m6LAim",
+        "stall_h88BpX",
+        "stall_tMKRgB",
+        "stall_cyXFkK",
+        "stall_raKLy3",
+        "stall_FzHdP7",
+        "stall_xFthik",
+        "stall_3adzwz",
+        "stall_4bBqGQ",
+        "stall_grFgQb",
+        "stall_eyRGzP",
+        "stall_jNzD4q",
+        "stall_KHjqLX",
+        "stall_qgYkKh",
+        "stall_dae4Un",
+        "stall_9d8XzC",
+        "stall_gwLXWz",
+        "stall_9Fb6G4",
+        "stall_jTpLVG",
+        "stall_6ig3i6",
+        "stall_ihw8gL",
+        "stall_CKX4EP",
+        "stall_jhNTrn",
+        "stall_q339n6",
+        "stall_rFKJFF",
+        "stall_Pk9kBz",
+        "stall_aw7fjV",
+        "stall_mPxX6K",
+        "stall_NiAXMQ",
+        "stall_NQQjjB"
+      ],
+      "settings": {
+        "event_title": "Half Price Days",
+        "event_sub": "Central Billing Counter",
+        "event_venue": "SVN Conventions, Vijayawada",
+        "event_dates": "8 to 11 October 2026",
+        "terminal_id": "Terminal 01 (Central Billing Desk)",
+        "new_bill_btn": "New Bill",
+        "venue_full_address": "SVN Conventions, Enikepadu, Poranki, Vijayawada, Andhra Pradesh",
+        "home_delivery_label": "Home Delivery Requested",
+        "hero_headline": "Vijayawada's Largest Retail Expo ·",
+        "hero_highlight": "Official Billing Portal",
+        "hero_sub_1": "📍 SVN Conventions, Enikepadu, Poranki",
+        "hero_sub_2": "🎟️ 25,000 sq ft · 200+ Branded Stalls",
+        "hero_sub_3": "⚡ Cash Settled to Stores Every 3 Hours",
+        "badge_1_label": "Discount Rule",
+        "badge_1_val": "Min 50% OFF",
+        "badge_2_label": "Payment Gateway",
+        "badge_2_val": "Razorpay Secured",
+        "badge_3_label": "Invoice Type",
+        "badge_3_val": "Official GST Tax Slip",
+        "products_tag": "MRP = 2 × Event Price · Multi-Stall Basket",
+        "add_item_label": "+ Add Another Product / Stall Item to this Bill",
+        "stalls_bulk_list": "",
+        "paymode_online_title": "Razorpay Online",
+        "paymode_online_sub": "Cards, UPI, Netbanking",
+        "paymode_cash_title": "Record Cash / COD",
+        "paymode_cash_sub": "Physical Counter Cash",
+        "cash_btn_label": "💵 Record Cash & Print Slip",
+        "online_btn_label": "Pay Online",
+        "trust_note": "100% Encrypted Gateway · Official Central Counter",
+        "receipt_brand_title": "HalfPe",
+        "receipt_brand_sub": "Invoice",
+        "receipt_status_badge": "LIVE COUNTER",
+        "modal_title": "Payment Verified & Recorded!",
+        "modal_sub": "Tax invoice successfully generated for Half Price Days Expo",
+        "print_btn_label": "Print Slip (POS / A4)",
+        "whatsapp_btn_label": "Share WhatsApp Slip",
+        "inv_title": "HALF PRICE DAYS",
+        "inv_sub": "VIJAYAWADA RETAIL EXPO · SVN CONVENTIONS",
+        "inv_counter_info": "Central Billing Counter · Official GST Tax Slip",
+        "inv_footer_1": "Thank you for shopping at Half Price Days!",
+        "inv_footer_2": "All items sold at Minimum 50% OFF. Visit HalfPe.com",
+        "razorpay_page_url": "https://pages.razorpay.com/pl_TiDS0lNFRYCj14/view",
+        "order_webhook_url": "https://halfpe-expo-billing-backend-production.up.railway.app/api/create-order",
+        "razorpay_key": "rzp_test_1DP5mmOlF5G5ag",
+        "upi_id": "halfpe@icici"
+      }
+    }
+  },
+  "order": [
+    "main"
+  ]
+}

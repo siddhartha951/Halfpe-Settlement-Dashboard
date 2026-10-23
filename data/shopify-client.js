@@ -31,7 +31,8 @@ class ShopifyClient {
    * Loads all master vendors from page.vijaywada-s-event.json + event stalls
    */
   static loadVijayawadaVendorsMaster(templatePath) {
-    const defaultPath = path.resolve(__dirname, '../../templates/page.vijaywada-s-event.json');
+    const localPath = path.resolve(__dirname, 'vijaywada-event-template.json');
+    const defaultPath = fs.existsSync(localPath) ? localPath : path.resolve(__dirname, '../../templates/page.vijaywada-s-event.json');
     const filePath = templatePath || defaultPath;
     let templateVendors = [];
     try {

@@ -1,7 +1,14 @@
+const DEFAULT_USER = {
+  id: 'usr_1',
+  name: 'Krishna (Super Admin)',
+  email: 'admin@halfpe.com',
+  role: 'super_admin'
+};
+
 // State Store
 const state = {
-  currentUser: null,
-  allUsers: [],
+  currentUser: DEFAULT_USER,
+  allUsers: [DEFAULT_USER],
   activeTab: 'vendors', // 'vendors', 'recon', 'exceptions', 'globalAudit'
   selectedVendorId: null,
   vendorDetailSubTab: 'bills', // 'bills', 'returns', 'payouts', 'audit'
@@ -18,6 +25,14 @@ const state = {
   shopifyStatus: null,
   isShopifySyncing: false
 };
+
+function getUserRole() {
+  return (state.currentUser && state.currentUser.role) ? state.currentUser.role : 'super_admin';
+}
+
+function getUserName() {
+  return (state.currentUser && state.currentUser.name) ? state.currentUser.name : 'Krishna (Super Admin)';
+}
 
 // Format currency with strict 2 decimal places
 function formatINR(val) {
@@ -764,17 +779,22 @@ async function selectVendor(vendorId) {
 
 async function loadVendorDetail(vendorId) {
   try {
-    let url = `/api/vendors/${vendorId}`;
+    let url = `/api/vendors/${encodeURIComponent(vendorId)}`;
     const params = new URLSearchParams();
     if (state.startDate) params.append('startDate', state.startDate);
     if (state.endDate) params.append('endDate', state.endDate);
     if (params.toString()) url += '?' + params.toString();
 
     const res = await fetch(url);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `HTTP ${res.status}`);
+    }
     state.selectedVendorData = await res.json();
     renderMain();
   } catch (err) {
-    toast('Failed to load vendor details', 'error');
+    console.error('loadVendorDetail error:', err);
+    toast('Failed to load vendor details' + (err.message ? `: ${err.message}` : ''), 'error');
   }
 }
 
@@ -823,7 +843,7 @@ function renderVendorDetailView() {
           <span>•</span>
           <span class="vendor-commission-tag">
             Commission: <strong>${v.commissionPct}%</strong>
-            ${state.currentUser.role === 'super_admin' ? `
+            ${getUserRole() === 'super_admin' ? `
               <button class="btn btn-outline btn-sm" style="padding: 2px 6px; font-size: 0.7rem; margin-left: 6px;" onclick="openEditCommissionModal('${v.id}', ${v.commissionPct})">
                 ✏️ Edit
               </button>
@@ -838,12 +858,12 @@ function renderVendorDetailView() {
         <button class="btn btn-outline btn-sm" onclick="openPrintableStatement('${v.id}')">
           🖨️ Printable Vendor Statement (PDF)
         </button>
-        ${(state.currentUser.role === 'super_admin' || state.currentUser.role === 'finance') ? `
+        ${(getUserRole() === 'super_admin' || getUserRole() === 'finance') ? `
           <button class="btn btn-success btn-sm" onclick="openRecordPayoutModal('${v.id}')">
             💳 Record Payout
           </button>
         ` : ''}
-        ${(state.currentUser.role === 'super_admin' || state.currentUser.role === 'billing_staff') ? `
+        ${(getUserRole() === 'super_admin' || getUserRole() === 'billing_staff') ? `
           <button class="btn btn-primary btn-sm" onclick="openAddBillModal('${v.id}')">
             + Add Manual Bill Row
           </button>
@@ -974,7 +994,7 @@ function renderBillsLedgerTab(bills, vendorId) {
                   <div>${b.customerName}</div>
                   <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
                     📱 ${b.mobile}
-                    ${(state.currentUser.role === 'super_admin' && b.rawMobile && b.mobile.includes('XXXXXX')) ? `
+                    ${(getUserRole() === 'super_admin' && b.rawMobile && b.mobile.includes('XXXXXX')) ? `
                       <button class="btn btn-outline btn-sm" style="padding: 1px 4px; font-size: 0.65rem;" onclick="unmaskPhone('${b.id}')">Unmask</button>
                     ` : ''}
                   </div>
@@ -1001,7 +1021,7 @@ function renderBillsLedgerTab(bills, vendorId) {
                   ${b.lastEditedBy ? `${b.lastEditedBy}<br><span style="font-size: 0.68rem;">${formatDate(b.lastEditedAt)}</span>` : '-'}
                 </td>
                 <td class="no-strike">
-                  ${!b.isVoid && (state.currentUser.role === 'super_admin' || state.currentUser.role === 'billing_staff') ? `
+                  ${!b.isVoid && (getUserRole() === 'super_admin' || getUserRole() === 'billing_staff') ? `
                     <div style="display: flex; gap: 6px;">
                       <button class="btn btn-outline btn-sm" onclick='openEditBillModal(${JSON.stringify(b)})'>
                         ✏️ Edit
@@ -1220,13 +1240,13 @@ async function renderReconView() {
                     </td>
                     <td>
                       ${lock ? `
-                        ${state.currentUser.role === 'super_admin' ? `
+                        ${getUserRole() === 'super_admin' ? `
                           <button class="btn btn-outline btn-sm" onclick="toggleDayLock('${d.date}', false)">
                             🔓 Unlock Day (Super Admin)
                           </button>
                         ` : `<span style="font-size: 0.75rem; color: var(--text-muted);">Locked (Requires Super Admin)</span>`}
                       ` : `
-                        ${(state.currentUser.role === 'finance' || state.currentUser.role === 'super_admin') ? `
+                        ${(getUserRole() === 'finance' || getUserRole() === 'super_admin') ? `
                           <button class="btn btn-danger-outline btn-sm" onclick="toggleDayLock('${d.date}', true)">
                             🔒 Mark Settled & Lock Day
                           </button>
@@ -1262,7 +1282,7 @@ async function toggleDayLock(date, lock) {
     const res = await fetch('/api/day-locks/toggle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date, lock, reason, user: state.currentUser.name })
+      body: JSON.stringify({ date, lock, reason, user: getUserName() })
     });
     const data = await res.json();
     if (data.error) {
