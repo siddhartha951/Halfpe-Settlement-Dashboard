@@ -3,6 +3,7 @@ const path = require('path');
 const ShopifyClient = require('./shopify-client');
 
 const DB_PATH = path.join(__dirname, 'database.json');
+const SEED_PATH = path.join(__dirname, 'database.seed.json');
 
 // Default Vijayawada Event Seed
 const defaultEvent = {
@@ -29,8 +30,9 @@ class Store {
 
   load() {
     try {
-      if (fs.existsSync(DB_PATH)) {
-        const raw = fs.readFileSync(DB_PATH, 'utf8');
+      const targetPath = fs.existsSync(DB_PATH) ? DB_PATH : (fs.existsSync(SEED_PATH) ? SEED_PATH : null);
+      if (targetPath) {
+        const raw = fs.readFileSync(targetPath, 'utf8');
         const parsed = JSON.parse(raw);
         if (!parsed.billRows) parsed.billRows = [];
         if (!parsed.returns) parsed.returns = [];
