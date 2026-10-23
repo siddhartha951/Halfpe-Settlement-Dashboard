@@ -144,26 +144,25 @@
     </div>
   </aside>
 
-  <!-- Date Range Filter Toolbar (Section / Requirements) -->
+  <!-- Date Range Filter Toolbar (Simplified to Yesterday, Today, Custom per Krishna Bug 2) -->
   <div class="date-range-toolbar">
     <div class="date-presets-group">
       <span class="date-preset-label">📅 Range:</span>
-      <button class="date-preset-btn active" id="presetAll" onclick="setDatePreset('all')">Since 6 Oct</button>
-      <button class="date-preset-btn" id="presetExpo" onclick="setDatePreset('expo')">8–11 Oct Expo</button>
+      <button class="date-preset-btn" id="presetYesterday" onclick="setDatePreset('yesterday')">Yesterday</button>
       <button class="date-preset-btn" id="presetToday" onclick="setDatePreset('today')">Today</button>
-      <button class="date-preset-btn" id="presetCustom" onclick="setDatePreset('custom')">Custom</button>
+      <button class="date-preset-btn active" id="presetCustom" onclick="setDatePreset('custom')">Custom</button>
     </div>
 
-    <div class="custom-date-picker-wrap" id="customDateWrap" style="display: none;">
+    <div class="custom-date-picker-wrap" id="customDateWrap" style="display: flex;">
       <label for="customFromDate">From:</label>
-      <input type="date" id="customFromDate" value="2026-10-06">
+      <input type="date" id="customFromDate" onchange="handleCustomStartDateChange(this.value)">
       <label for="customToDate">To:</label>
-      <input type="date" id="customToDate">
-      <button class="btn btn-outline btn-sm" onclick="applyCustomDateRange()">Apply</button>
+      <input type="date" id="customToDate" onchange="handleCustomEndDateChange(this.value)">
+      <button class="btn btn-primary btn-sm" onclick="applyCustomDateRange()">Apply</button>
     </div>
 
     <div class="date-info-wrap">
-      <span id="activeDateDisplay" class="active-date-tag">Active: Since 6 Oct 2026</span>
+      <span id="activeDateDisplay" class="active-date-tag">Active: Custom (8 Oct 2026 to Today)</span>
       <span id="lastSyncDisplay" class="last-sync-tag"></span>
     </div>
   </div>

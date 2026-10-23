@@ -5,6 +5,30 @@ const DEFAULT_USER = {
   role: 'super_admin'
 };
 
+// Timezone-safe date helpers for Asia/Kolkata (Indian Standard Time)
+function getBusinessTodayKolkata() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const p = type => parts.find(it => it.type === type)?.value ?? '';
+  return `${p('year')}-${p('month')}-${p('day')}`;
+}
+
+function getBusinessYesterdayKolkata() {
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(yesterday);
+  const p = type => parts.find(it => it.type === type)?.value ?? '';
+  return `${p('year')}-${p('month')}-${p('day')}`;
+}
+
 // State Store
 const state = {
   currentUser: DEFAULT_USER,
@@ -18,10 +42,10 @@ const state = {
   statusFilter: 'all',
   vendorDateFilter: 'all',
   unmaskedPhones: new Set(),
-  // Date filtering state (default: Since 6 Oct 2026 per requirements)
-  dateFilterMode: 'all',
-  startDate: '2026-10-06',
-  endDate: '',
+  // Date filtering state (simplified to Yesterday, Today, Custom with Asia/Kolkata bounds)
+  dateFilterMode: 'custom',
+  startDate: '2026-10-08',
+  endDate: getBusinessTodayKolkata(),
   shopifyStatus: null,
   isShopifySyncing: false
 };
@@ -96,7 +120,21 @@ async function init() {
     }
   });
 
-  // 8. Global exports for onclick handlers
+  // 8. Initialize Custom Date toolbar constraints
+  const todayStr = getBusinessTodayKolkata();
+  const fromEl = document.getElementById('customFromDate');
+  const toEl = document.getElementById('customToDate');
+  if (fromEl) {
+    fromEl.max = todayStr;
+    fromEl.value = state.startDate;
+  }
+  if (toEl) {
+    toEl.max = todayStr;
+    toEl.min = state.startDate;
+    toEl.value = state.endDate;
+  }
+
+  // 9. Global exports for onclick handlers
   window.openLoginModal = openLoginModal;
   window.handleUserAuthClick = handleUserAuthClick;
   window.logout = logout;
@@ -106,6 +144,10 @@ async function init() {
   window.switchMainTab = switchMainTab;
   window.handleSearch = handleSearch;
   window.handleStatusFilter = handleStatusFilter;
+  window.setDatePreset = setDatePreset;
+  window.applyCustomDateRange = applyCustomDateRange;
+  window.handleCustomStartDateChange = handleCustomStartDateChange;
+  window.handleCustomEndDateChange = handleCustomEndDateChange;
 }
 
 function updateUserChipUI() {
@@ -255,49 +297,113 @@ async function triggerShopifySync() {
 
 function setDatePreset(mode) {
   state.dateFilterMode = mode;
+  const today = getBusinessTodayKolkata();
+  const yesterday = getBusinessYesterdayKolkata();
 
   document.querySelectorAll('.date-preset-btn').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById(
-    mode === 'all' ? 'presetAll' :
-    mode === 'expo' ? 'presetExpo' :
+    mode === 'yesterday' ? 'presetYesterday' :
     mode === 'today' ? 'presetToday' : 'presetCustom'
   );
   if (btn) btn.classList.add('active');
 
   const customWrap = document.getElementById('customDateWrap');
   const activeDisplay = document.getElementById('activeDateDisplay');
+  const fromEl = document.getElementById('customFromDate');
+  const toEl = document.getElementById('customToDate');
 
   if (mode === 'custom') {
     if (customWrap) customWrap.style.display = 'flex';
-    if (activeDisplay) activeDisplay.textContent = 'Active: Custom Date Range';
+    if (fromEl) {
+      fromEl.max = today;
+      if (!fromEl.value) fromEl.value = state.startDate || '2026-10-08';
+    }
+    if (toEl) {
+      toEl.max = today;
+      if (fromEl && fromEl.value) toEl.min = fromEl.value;
+      if (!toEl.value) toEl.value = state.endDate || today;
+    }
+    state.startDate = fromEl ? fromEl.value : (state.startDate || '2026-10-08');
+    state.endDate = toEl ? toEl.value : (state.endDate || today);
+    if (activeDisplay) activeDisplay.textContent = `Active: Custom (${state.startDate} to ${state.endDate})`;
+    refreshDashboard();
     return;
   }
 
   if (customWrap) customWrap.style.display = 'none';
 
-  if (mode === 'all') {
-    state.startDate = '2026-10-06';
-    state.endDate = '';
-    if (activeDisplay) activeDisplay.textContent = 'Active: Since 6 Oct 2026 (All Event)';
-  } else if (mode === 'expo') {
-    state.startDate = '2026-10-08';
-    state.endDate = '2026-10-11';
-    if (activeDisplay) activeDisplay.textContent = 'Active: 8–11 Oct 2026 (Expo Days)';
-  } else if (mode === 'today') {
-    const today = new Date().toISOString().slice(0, 10);
+  if (mode === 'today') {
     state.startDate = today;
     state.endDate = today;
     if (activeDisplay) activeDisplay.textContent = `Active: Today (${today})`;
+  } else if (mode === 'yesterday') {
+    state.startDate = yesterday;
+    state.endDate = yesterday;
+    if (activeDisplay) activeDisplay.textContent = `Active: Yesterday (${yesterday})`;
   }
 
   refreshDashboard();
 }
 
-function applyCustomDateRange() {
+function handleCustomStartDateChange(val) {
+  const today = getBusinessTodayKolkata();
+  const fromEl = document.getElementById('customFromDate');
+  const toEl = document.getElementById('customToDate');
+
+  if (val > today) {
+    toast(`Future date (${val}) not allowed. Restricted to today (${today}).`, 'error');
+    if (fromEl) fromEl.value = today;
+    val = today;
+  }
+
+  if (toEl) {
+    toEl.min = val;
+    if (toEl.value && toEl.value < val) {
+      toEl.value = val;
+    }
+  }
+}
+
+function handleCustomEndDateChange(val) {
+  const today = getBusinessTodayKolkata();
   const fromEl = document.getElementById('customFromDate');
   const toEl = document.getElementById('customToDate');
   const fromVal = fromEl ? fromEl.value : '';
-  const toVal = toEl ? toEl.value : '';
+
+  if (val > today) {
+    toast(`Future date (${val}) not allowed. Restricted to today (${today}).`, 'error');
+    if (toEl) toEl.value = today;
+    val = today;
+  }
+
+  if (fromVal && val < fromVal) {
+    toast(`End date (${val}) cannot be earlier than start date (${fromVal}).`, 'error');
+    if (toEl) toEl.value = fromVal;
+  }
+}
+
+function applyCustomDateRange() {
+  const today = getBusinessTodayKolkata();
+  const fromEl = document.getElementById('customFromDate');
+  const toEl = document.getElementById('customToDate');
+  let fromVal = fromEl ? fromEl.value : '';
+  let toVal = toEl ? toEl.value : '';
+
+  if (fromVal > today) {
+    toast(`Start date cannot exceed today (${today}).`, 'error');
+    fromVal = today;
+    if (fromEl) fromEl.value = today;
+  }
+  if (toVal > today) {
+    toast(`End date cannot exceed today (${today}).`, 'error');
+    toVal = today;
+    if (toEl) toEl.value = today;
+  }
+  if (fromVal && toVal && toVal < fromVal) {
+    toast(`End date cannot be earlier than start date.`, 'error');
+    toVal = fromVal;
+    if (toEl) toEl.value = fromVal;
+  }
 
   state.startDate = fromVal || '';
   state.endDate = toVal || '';
@@ -305,7 +411,7 @@ function applyCustomDateRange() {
   const activeDisplay = document.getElementById('activeDateDisplay');
   if (activeDisplay) {
     if (fromVal && toVal) {
-      activeDisplay.textContent = `Active: ${fromVal} to ${toVal}`;
+      activeDisplay.textContent = `Active: Custom (${fromVal} to ${toVal})`;
     } else if (fromVal) {
       activeDisplay.textContent = `Active: Since ${fromVal}`;
     } else if (toVal) {
@@ -315,7 +421,7 @@ function applyCustomDateRange() {
     }
   }
 
-  toast(`Filtered for dates: ${fromVal || 'Any'} to ${toVal || 'Now'}`, 'info');
+  toast(`Filtered for dates: ${fromVal || 'Start'} to ${toVal || 'Today'}`, 'info');
   refreshDashboard();
 }
 

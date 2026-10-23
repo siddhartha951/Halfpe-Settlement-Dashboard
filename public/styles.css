@@ -390,7 +390,7 @@ body {
 -------------------------------------------------------------- */
 .summary-cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 16px;
   margin-bottom: 28px;
 }
@@ -398,13 +398,17 @@ body {
 .summary-card {
   background: var(--notion-surface);
   border-radius: var(--radius-md);
-  padding: 20px 22px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--notion-hairline);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .summary-card:hover {
@@ -424,12 +428,16 @@ body {
 }
 
 .summary-card-value {
-  font-size: 1.85rem;
+  font-size: clamp(1.1rem, 2.2vw, 1.75rem);
   font-weight: 700;
   color: var(--notion-ink);
   letter-spacing: -0.035em;
   font-feature-settings: "tnum" 1, "cv05" 1;
-  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .summary-card-sub {
@@ -1723,17 +1731,25 @@ body {
 
   /* Summary Metrics: 2 columns on mobile */
   .summary-cards-grid, .metrics-summary-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
     gap: 10px;
     margin-bottom: 16px;
   }
 
   .summary-card, .metric-card {
     padding: 12px 14px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .summary-card-value, .metric-card-value {
-    font-size: 1.25rem;
+    font-size: clamp(1rem, 3.8vw, 1.35rem);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    font-variant-numeric: tabular-nums;
   }
 
   /* Credential Picker 1 column on mobile */
@@ -1796,8 +1812,20 @@ body {
     gap: 8px;
   }
 
+  .summary-card, .metric-card {
+    padding: 12px 14px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
   .summary-card-value, .metric-card-value {
-    font-size: 1.35rem;
+    font-size: clamp(1.1rem, 5vw, 1.45rem);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    font-variant-numeric: tabular-nums;
   }
 
   .date-preset-btn {
