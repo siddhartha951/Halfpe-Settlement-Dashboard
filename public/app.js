@@ -31,8 +31,8 @@ function getBusinessYesterdayKolkata() {
 
 // State Store
 const state = {
-  currentUser: DEFAULT_USER,
-  allUsers: [DEFAULT_USER],
+  currentUser: null,
+  allUsers: [],
   activeTab: 'overall', // 'overall' or 'vendors'
   selectedVendorId: null,
   vendorDetailSubTab: 'bills', // 'bills', 'returns', 'payouts', 'audit'
@@ -54,11 +54,11 @@ const state = {
 };
 
 function getUserRole() {
-  return (state.currentUser && state.currentUser.role) ? state.currentUser.role : 'super_admin';
+  return (state.currentUser && state.currentUser.role) ? state.currentUser.role : 'guest';
 }
 
 function getUserName() {
-  return (state.currentUser && state.currentUser.name) ? state.currentUser.name : 'Krishna (Super Admin)';
+  return (state.currentUser && state.currentUser.name) ? state.currentUser.name : 'Guest';
 }
 
 // Format currency with strict 2 decimal places
@@ -95,8 +95,12 @@ async function init() {
   // 3. Check Shopify connection status
   await checkShopifyStatus();
 
-  // 4. Load initial vendors data
-  await loadVendorsSummary();
+  // 4. Load initial vendors data only if authenticated, otherwise render login page immediately
+  if (state.currentUser) {
+    await loadVendorsSummary();
+  } else {
+    renderMain();
+  }
 
   // 5. Setup modal click outside to dismiss
   const modalContainer = document.getElementById('modalContainer');
@@ -111,7 +115,7 @@ async function init() {
   if (chip) {
     chip.addEventListener('click', (e) => {
       e.stopPropagation();
-      openLoginModal();
+      handleUserAuthClick();
     });
   }
 
@@ -154,6 +158,10 @@ async function init() {
   window.setVendorFilterGroupA = setVendorFilterGroupA;
   window.setVendorFilterGroupB = setVendorFilterGroupB;
   window.clearVendorFilters = clearVendorFilters;
+  window.renderLoginPage = renderLoginPage;
+  window.handleLoginPageSubmit = handleLoginPageSubmit;
+  window.togglePagePasswordVisibility = togglePagePasswordVisibility;
+  window.autofillLogin = autofillLogin;
 }
 
 function updateUserChipUI() {
@@ -435,10 +443,7 @@ async function fetchUsers() {
   try {
     const res = await fetch('/api/auth/users');
     const data = await res.json();
-    if (!state.currentUser) {
-      state.currentUser = data.currentUser;
-    }
-    state.allUsers = data.users;
+    state.allUsers = data.users || [];
     renderRoleSwitcher();
     updateUserChipUI();
   } catch (err) {
@@ -604,6 +609,9 @@ async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
   } catch (e) {}
   state.currentUser = null;
+  state.selectedVendorId = null;
+  state.vendorsData = null;
+  state.selectedVendorData = null;
   try {
     localStorage.removeItem('hp_session_user');
   } catch (e) {}
@@ -684,7 +692,27 @@ function switchMainTab(tab) {
   renderMain();
 }
 
+function updateNavigationVisibility() {
+  const isAuth = Boolean(state.currentUser);
+  const desktopNav = document.querySelector('.desktop-nav');
+  const dateToolbar = document.querySelector('.date-range-toolbar');
+  const mobileBottomNav = document.getElementById('mobileBottomNav');
+  const syncBtn = document.getElementById('btnShopifySync');
+
+  if (desktopNav) desktopNav.style.display = isAuth ? '' : 'none';
+  if (dateToolbar) dateToolbar.style.display = isAuth ? '' : 'none';
+  if (mobileBottomNav) mobileBottomNav.style.display = isAuth ? '' : 'none';
+  if (syncBtn) syncBtn.style.display = isAuth ? '' : 'none';
+}
+
 function renderMain() {
+  updateNavigationVisibility();
+
+  if (!state.currentUser) {
+    renderLoginPage();
+    return;
+  }
+
   if (state.selectedVendorId) {
     renderVendorDetailView();
   } else if (state.activeTab === 'overall') {
@@ -692,6 +720,112 @@ function renderMain() {
   } else {
     renderVendorsListView();
   }
+}
+
+function renderLoginPage() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+
+  main.innerHTML = `
+    <div class="login-page-wrapper">
+      <div class="login-page-card">
+        <div class="login-page-header">
+          <div class="login-page-logo-wrap">
+            <img src="halfpe-logo.png" alt="HalfPe Logo" class="login-page-logo-img">
+            <div style="font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em;">
+              <span class="brand-half">Half</span><span class="brand-pe">Pe</span>
+              <span class="brand-badge">SETTLEMENT</span>
+            </div>
+          </div>
+          <h1 class="login-page-title">Sign In to Dashboard</h1>
+          <p class="login-page-subtitle">
+            Enter your credentials to access the Vijayawada Expo financial settlements and vendor reconciliation.
+          </p>
+        </div>
+
+        <form onsubmit="handleLoginPageSubmit(event)" class="login-form">
+          <div class="login-field">
+            <label for="pageLoginEmail">Email Address</label>
+            <input type="email" id="pageLoginEmail" placeholder="e.g. admin@halfpe.com" required autocomplete="username" />
+          </div>
+          <div class="login-field">
+            <label for="pageLoginPassword">Password</label>
+            <div style="position: relative;">
+              <input type="password" id="pageLoginPassword" placeholder="Enter your password" required autocomplete="current-password" 
+                style="width: 100%; padding-right: 38px;" />
+              <button type="button" onclick="togglePagePasswordVisibility()" title="Show/Hide Password"
+                style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 1rem; opacity: 0.7;">
+                👁️
+              </button>
+            </div>
+          </div>
+          <button type="submit" id="btnPageLogin" class="btn btn-primary btn-block" style="padding: 12px; font-weight: 600; font-size: 0.95rem; margin-top: 6px;">
+            Sign In & Unlock Dashboard →
+          </button>
+        </form>
+
+        <div class="login-accounts-box">
+          <div class="login-accounts-title">
+            <span>⚡ Click to Fill Test Account</span>
+          </div>
+          <div class="login-accounts-grid">
+            <button type="button" class="login-account-btn" onclick="autofillLogin('admin@halfpe.com', 'admin@2026')">
+              <span class="login-account-role">👑 Super Admin</span>
+              <span class="login-account-email">admin@halfpe.com</span>
+            </button>
+            <button type="button" class="login-account-btn" onclick="autofillLogin('billing@halfpe.com', 'billing@2026')">
+              <span class="login-account-role">🧾 Billing Counter</span>
+              <span class="login-account-email">billing@halfpe.com</span>
+            </button>
+            <button type="button" class="login-account-btn" onclick="autofillLogin('finance@halfpe.com', 'finance@2026')">
+              <span class="login-account-role">💼 Finance & Accounts</span>
+              <span class="login-account-email">finance@halfpe.com</span>
+            </button>
+            <button type="button" class="login-account-btn" onclick="autofillLogin('viewer@halfpe.com', 'viewer@2026')">
+              <span class="login-account-role">👁️ Auditor / Viewer</span>
+              <span class="login-account-email">viewer@halfpe.com</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (typeof gsap !== 'undefined') {
+    gsap.from('.login-page-card', {
+      opacity: 0,
+      y: 25,
+      scale: 0.98,
+      duration: 0.35,
+      ease: 'power2.out'
+    });
+  }
+
+  setTimeout(() => {
+    const el = document.getElementById('pageLoginEmail');
+    if (el) el.focus();
+  }, 100);
+}
+
+function togglePagePasswordVisibility() {
+  const pInput = document.getElementById('pageLoginPassword');
+  if (!pInput) return;
+  pInput.type = pInput.type === 'password' ? 'text' : 'password';
+}
+
+function autofillLogin(email, password) {
+  const eInput = document.getElementById('pageLoginEmail') || document.getElementById('loginEmail');
+  const pInput = document.getElementById('pageLoginPassword') || document.getElementById('loginPassword');
+  if (eInput) eInput.value = email;
+  if (pInput) pInput.value = password;
+  toast(`Selected: ${email}`, 'info');
+}
+
+function handleLoginPageSubmit(e) {
+  e.preventDefault();
+  const email = document.getElementById('pageLoginEmail').value;
+  const password = document.getElementById('pageLoginPassword').value;
+  executeLogin(email, password);
 }
 
 async function renderOverallSettlementView() {
