@@ -544,6 +544,62 @@ app.post('/api/orders/bulk-push-to-shopify', async (req, res) => {
   });
 });
 
+// Reject an unapproved internal order (Super Admin only)
+app.post('/api/orders/:id/reject', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can reject orders.' });
+  }
+  const { reason } = req.body || {};
+  try {
+    const order = store.rejectInternalOrder(req.params.id, reason || 'Rejected by Super Admin', currentUser);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.json({ success: true, message: 'Order rejected successfully', order });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Simulate a new order from POS for testing (Super Admin only)
+app.post('/api/orders/simulate', (req, res) => {
+  const sampleVendors = store.getVendors().filter(v => v.active !== false);
+  const v = sampleVendors[Math.floor(Math.random() * sampleVendors.length)] || {
+    id: 'v_PSC',
+    name: 'Prasiddhi Silks',
+    stallNo: 'Stall 12',
+    commissionPct: 15
+  };
+  const billNo = 'VIJ-POS-' + Math.floor(10000 + Math.random() * 90000);
+  const sampleAmounts = [1200, 1850, 2400, 3500, 4200, 5600];
+  const payable = sampleAmounts[Math.floor(Math.random() * sampleAmounts.length)];
+  const isCash = Math.random() > 0.5;
+
+  const result = store.recordInternalOrder({
+    billNo,
+    clientOrderRef: billNo,
+    customer: {
+      name: ['Kavitha Reddy', 'Ramesh Chandra', 'Srinivas Rao', 'Padmaja Rani', 'Venkatesh Babu'][Math.floor(Math.random() * 5)],
+      phone: '98' + Math.floor(10000000 + Math.random() * 90000000),
+      email: 'customer@expo.halfpe.com'
+    },
+    items: [
+      { name: `${v.name} Handloom Garment`, price: payable, quantity: 1, stallNo: v.stallNo, vendorId: v.id }
+    ],
+    stallGroups: [
+      { stallNo: v.stallNo, vendorId: v.id, vendorName: v.name, subtotal: payable }
+    ],
+    totals: { subtotal: payable, payable, discount: 0 },
+    payment: {
+      method: isCash ? 'Counter Cash' : 'Razorpay UPI',
+      paymentId: isCash ? `CASH_${Date.now()}` : `pay_${Date.now().toString(36)}`,
+      status: 'PAID'
+    },
+    terminal: 'POS-01',
+    source: 'POS Billing Terminal'
+  }, currentUser.name || 'Super Admin Simulation');
+
+  res.json({ success: true, order: result.order });
+});
+
 // -------------------------------------------------------------
 // 3. Bill Rows (Orders Table CRUD with Audit & Constraints)
 // -------------------------------------------------------------
@@ -1100,7 +1156,7 @@ app.get('/api/reports/exceptions.csv', (req, res) => {
 });
 
 app.get('/api/reports/daily-payment-modes', (req, res) => {
-  const nonVoid = store.data.billRows.filter(r => !r.isVoid);
+  const nonVoid = store.data.billRows.filter(r => !r.isVoid && r.isApproved !== false);
   const summary = nonVoid.reduce((acc, r) => {
     const day = r.createdAt.split('T')[0];
     if (!acc[day]) {

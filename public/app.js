@@ -1,3 +1,14 @@
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+window.escapeHtml = escapeHtml;
+
 const DEFAULT_USER = {
   id: 'usr_1',
   name: 'Krishna (Super Admin)',
@@ -164,10 +175,13 @@ async function init() {
   window.handleGlobalVendorChange = handleGlobalVendorChange;
   window.renderOrdersManagementView = renderOrdersManagementView;
   window.handleOrderSearch = handleOrderSearch;
+  window.setOrderStatusFilter = setOrderStatusFilter;
   window.setOrderShopifyFilter = setOrderShopifyFilter;
   window.toggleSelectOrder = toggleSelectOrder;
   window.toggleSelectAllOrders = toggleSelectAllOrders;
   window.pushSingleOrderToShopify = pushSingleOrderToShopify;
+  window.rejectSingleOrder = rejectSingleOrder;
+  window.simulatePosOrder = simulatePosOrder;
   window.bulkPushApprovedOrders = bulkPushApprovedOrders;
   window.openViewOrderModal = openViewOrderModal;
   window.openEditOrderModal = openEditOrderModal;
@@ -2965,57 +2979,89 @@ async function renderOrdersManagementView() {
   const main = document.getElementById('mainContent');
   if (!main) return;
 
-  main.innerHTML = `
-    <div class="view-header" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-      <div>
-        <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
-          📦 Orders Management
-          <span class="badge badge-blue" style="font-size: 0.75rem; vertical-align: middle;">Pre-Shopify Staging</span>
-        </h1>
-        <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
-          Review internally recorded customer orders, verify details, and push approved orders to Shopify.
-        </p>
-      </div>
+  try {
+    main.innerHTML = `
+      <div class="view-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+        <div>
+          <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px; margin: 0 0 4px 0;">
+            📦 Orders Management & Approval
+            <span class="badge badge-blue" style="font-size: 0.75rem; vertical-align: middle;">Pre-Shopify Staging</span>
+          </h1>
+          <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin: 0;">
+            All orders from the Vijayawada billing counter stage here first. Super Admin can review, edit details, and manually or bulk-approve them into Shopify.
+          </p>
+        </div>
 
-      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-        <button class="btn btn-outline btn-sm" onclick="renderOrdersManagementView()">
-          🔄 Refresh Orders
-        </button>
-        ${getUserRole() === 'super_admin' ? `
-          <button class="btn btn-primary btn-sm" onclick="bulkPushApprovedOrders()">
-            🚀 Bulk Push Approved to Shopify
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          ${getUserRole() === 'super_admin' ? `
+            <button class="btn btn-outline btn-sm" onclick="simulatePosOrder()" title="Simulate a new customer order from POS for testing">
+              ➕ Simulate POS Order
+            </button>
+            <button class="btn btn-primary btn-sm" id="btnBulkApproveTop" onclick="bulkPushApprovedOrders()" style="background: #008060; border-color: #008060;">
+              🚀 Bulk Approve & Push to Shopify
+            </button>
+          ` : ''}
+          <button class="btn btn-outline btn-sm" onclick="renderOrdersManagementView()">
+            🔄 Refresh Orders
           </button>
-        ` : ''}
-      </div>
-    </div>
-
-    <!-- Orders Filter Bar -->
-    <div class="card" style="padding: 16px; margin-bottom: 20px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline);">
-      <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
-        <div style="display: flex; gap: 10px; flex-grow: 1; max-width: 400px;">
-          <input type="text" id="orderSearchInput" class="form-input" placeholder="🔍 Search by Bill #, Customer Name, Phone, Stall..." 
-            value="${escapeHtml(ordersManagementState.search)}" oninput="handleOrderSearch(this.value)" style="width: 100%; height: 36px;">
-        </div>
-
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-          <span style="font-size: 0.82rem; font-weight: 600; color: var(--notion-secondary);">Shopify Sync:</span>
-          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('all')">All</button>
-          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'NOT_PUSHED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('NOT_PUSHED')">⏳ Awaiting Push</button>
-          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'PUSHED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('PUSHED')">✓ Pushed to Shopify</button>
-          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'FAILED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('FAILED')">✕ Push Failed</button>
         </div>
       </div>
-    </div>
 
-    <!-- Orders Table Container -->
-    <div id="ordersTableContainer">
-      <div style="text-align: center; padding: 40px; color: var(--notion-secondary);">
-        ⏳ Loading internal orders...
+      <!-- KPI Summary Cards for Orders Management -->
+      <div id="ordersKpiCardsContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px;">
+        <div class="summary-card" style="padding: 14px 18px;">
+          <span class="summary-card-label">Total Staged Orders <span>📦</span></span>
+          <span class="summary-card-value" id="kpiTotalOrders">0</span>
+          <span class="summary-card-sub">Recorded in HalfPe DB</span>
+        </div>
+        <div class="summary-card" style="padding: 14px 18px; border-left: 3px solid #D99B00;">
+          <span class="summary-card-label">Awaiting Approval <span>⏳</span></span>
+          <span class="summary-card-value" style="color: #D99B00;" id="kpiPendingApproval">0</span>
+          <span class="summary-card-sub" id="kpiPendingValue">₹0.00 value</span>
+        </div>
+        <div class="summary-card" style="padding: 14px 18px; border-left: 3px solid #008060;">
+          <span class="summary-card-label">Approved & Pushed <span>✅</span></span>
+          <span class="summary-card-value" style="color: #008060;" id="kpiApprovedOrders">0</span>
+          <span class="summary-card-sub">Live in Shopify & Settlement</span>
+        </div>
+        <div class="summary-card" style="padding: 14px 18px;">
+          <span class="summary-card-label">Rejected / Failed <span>✕</span></span>
+          <span class="summary-card-value" style="color: #C4122F;" id="kpiRejectedOrders">0</span>
+          <span class="summary-card-sub">Declined or sync error</span>
+        </div>
       </div>
-    </div>
-  `;
 
-  await loadAndRenderOrdersTable();
+      <!-- Orders Filter & Search Toolbar -->
+      <div class="card" style="padding: 14px 18px; margin-bottom: 20px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+        <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+          <div style="display: flex; gap: 10px; flex-grow: 1; max-width: 440px;">
+            <input type="text" id="orderSearchInput" class="form-input" placeholder="🔍 Search Bill #, Customer, Phone, Stall, Vendor..." 
+              value="${escapeHtml(ordersManagementState.search)}" oninput="handleOrderSearch(this.value)" style="width: 100%; height: 36px;">
+          </div>
+
+          <!-- Status Filter Tabs -->
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+            <span style="font-size: 0.82rem; font-weight: 600; color: var(--notion-secondary); margin-right: 4px;">Status:</span>
+            <button class="btn btn-xs ${ordersManagementState.statusFilter === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderStatusFilter('all')">All</button>
+            <button class="btn btn-xs ${ordersManagementState.statusFilter === 'PENDING_APPROVAL' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderStatusFilter('PENDING_APPROVAL')">⏳ Pending Approval</button>
+            <button class="btn btn-xs ${ordersManagementState.statusFilter === 'APPROVED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderStatusFilter('APPROVED')">✅ Approved</button>
+            <button class="btn btn-xs ${ordersManagementState.statusFilter === 'REJECTED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderStatusFilter('REJECTED')">❌ Rejected</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orders Table Container -->
+      <div id="ordersTableContainer">
+        <div style="text-align: center; padding: 40px; color: var(--notion-secondary);">
+          ⏳ Loading internal orders...
+        </div>
+      </div>
+    `;
+
+    await loadAndRenderOrdersTable();
+  } catch (err) {
+    main.innerHTML = `<div class="card" style="padding: 30px; color: red;">Error rendering Orders Management: ${err.message}</div>`;
+  }
 }
 
 async function loadAndRenderOrdersTable() {
@@ -3027,6 +3073,7 @@ async function loadAndRenderOrdersTable() {
     if (state.startDate) params.append('startDate', state.startDate);
     if (state.endDate) params.append('endDate', state.endDate);
     if (ordersManagementState.search) params.append('search', ordersManagementState.search);
+    if (ordersManagementState.statusFilter !== 'all') params.append('status', ordersManagementState.statusFilter);
     if (ordersManagementState.shopifyFilter !== 'all') params.append('shopifySyncStatus', ordersManagementState.shopifyFilter);
     if (state.selectedGlobalVendor && state.selectedGlobalVendor !== 'all') params.append('vendorId', state.selectedGlobalVendor);
 
@@ -3034,14 +3081,52 @@ async function loadAndRenderOrdersTable() {
     const orders = await res.json();
     ordersManagementState.ordersList = orders;
 
+    // Update KPI counters
+    const allRes = await fetch('/api/orders');
+    const allOrders = await allRes.json();
+    if (Array.isArray(allOrders)) {
+      const pending = allOrders.filter(o => o.status === 'PENDING_APPROVAL' || (!o.status && !o.shopifyOrderId));
+      const approved = allOrders.filter(o => o.status === 'APPROVED' || o.shopifySyncStatus === 'PUSHED');
+      const rejected = allOrders.filter(o => o.status === 'REJECTED' || o.shopifySyncStatus === 'FAILED');
+      const pendingVal = pending.reduce((sum, o) => sum + Number(o.totals?.payable || o.totalPayable || 0), 0);
+
+      const kpiTotal = document.getElementById('kpiTotalOrders');
+      if (kpiTotal) kpiTotal.textContent = allOrders.length;
+      const kpiPend = document.getElementById('kpiPendingApproval');
+      if (kpiPend) kpiPend.textContent = pending.length;
+      const kpiPendVal = document.getElementById('kpiPendingValue');
+      if (kpiPendVal) kpiPendVal.textContent = `₹${pendingVal.toLocaleString('en-IN')} value`;
+      const kpiAppr = document.getElementById('kpiApprovedOrders');
+      if (kpiAppr) kpiAppr.textContent = approved.length;
+      const kpiRej = document.getElementById('kpiRejectedOrders');
+      if (kpiRej) kpiRej.textContent = rejected.length;
+
+      const bulkBtn = document.getElementById('btnBulkApproveTop');
+      if (bulkBtn) {
+        const selCount = ordersManagementState.selectedOrderIds.size;
+        if (selCount > 0) {
+          bulkBtn.textContent = `🚀 Bulk Approve Selected (${selCount})`;
+        } else if (pending.length > 0) {
+          bulkBtn.textContent = `🚀 Bulk Approve All Pending (${pending.length})`;
+        } else {
+          bulkBtn.textContent = `🚀 Bulk Approve to Shopify`;
+        }
+      }
+    }
+
     if (!Array.isArray(orders) || orders.length === 0) {
       container.innerHTML = `
         <div class="card" style="padding: 48px; text-align: center; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline);">
           <div style="font-size: 2.2rem; margin-bottom: 12px;">📦</div>
           <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--notion-ink);">No Internal Orders Found</h3>
-          <p style="color: var(--notion-secondary); font-size: 0.88rem; max-width: 440px; margin: 8px auto 0;">
+          <p style="color: var(--notion-secondary); font-size: 0.88rem; max-width: 440px; margin: 8px auto 16px;">
             Orders recorded through the payment page will appear here for Super Admin approval before being pushed to Shopify.
           </p>
+          ${getUserRole() === 'super_admin' ? `
+            <button class="btn btn-primary btn-sm" onclick="simulatePosOrder()" style="background: #008060; border-color: #008060;">
+              ➕ Simulate Test Order From POS Billing Desk
+            </button>
+          ` : ''}
         </div>
       `;
       return;
@@ -3050,9 +3135,9 @@ async function loadAndRenderOrdersTable() {
     container.innerHTML = `
       <div class="table-card" style="background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); overflow: hidden; box-shadow: var(--shadow-soft);">
         <div style="padding: 12px 18px; background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; color: var(--notion-secondary);">
-          <span>Showing <strong>${orders.length}</strong> recorded orders</span>
+          <span>Showing <strong>${orders.length}</strong> internal orders in view</span>
           ${getUserRole() === 'super_admin' ? `
-            <span style="font-size: 0.8rem;">💡 Only Super Admin can approve and push orders to Shopify</span>
+            <span style="font-size: 0.8rem; color: #008060; font-weight: 600;">⚡ Approving an order creates it in Shopify & updates Overall Settlement</span>
           ` : ''}
         </div>
         <div style="overflow-x: auto;">
@@ -3062,41 +3147,51 @@ async function loadAndRenderOrdersTable() {
                 <th style="padding: 10px 14px; width: 36px;">
                   <input type="checkbox" onchange="toggleSelectAllOrders(this.checked)" title="Select all unpushed">
                 </th>
-                <th style="padding: 10px 14px;">Bill # / Ref</th>
+                <th style="padding: 10px 14px;">Bill # / Date</th>
                 <th style="padding: 10px 14px;">Customer</th>
                 <th style="padding: 10px 14px;">Stall & Vendor</th>
+                <th style="padding: 10px 14px;">Items</th>
                 <th style="padding: 10px 14px; text-align: right;">Gross Sale</th>
                 <th style="padding: 10px 14px; text-align: right;">Net Payable</th>
                 <th style="padding: 10px 14px;">Payment</th>
+                <th style="padding: 10px 14px;">Approval Status</th>
                 <th style="padding: 10px 14px;">Shopify Status</th>
-                <th style="padding: 10px 14px;">Approval</th>
                 <th style="padding: 10px 14px; text-align: right;">Actions</th>
               </tr>
             </thead>
             <tbody>
               ${orders.map(o => {
+                const isApproved = o.status === 'APPROVED';
+                const isRejected = o.status === 'REJECTED';
                 const isPushed = o.shopifySyncStatus === 'PUSHED';
                 const isFailed = o.shopifySyncStatus === 'FAILED';
-                const gross = o.totals?.grossAmount || o.totalPayable || 0;
+                const gross = o.totals?.grossAmount || o.totals?.payable || o.totalPayable || 0;
                 const net = o.totalPayable || gross;
+                const itemsCount = (o.items && o.items.length) || 1;
+                const firstItemTitle = o.items?.[0]?.name || o.items?.[0]?.title || 'Expo Item';
+
                 return `
-                  <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); transition: background 0.15s;" onmouseover="this.style.background='#faf9f8'" onmouseout="this.style.background='transparent'">
+                  <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); transition: background 0.15s; ${isRejected ? 'opacity: 0.6; background: #fafafa;' : ''}" onmouseover="this.style.background='#faf9f8'" onmouseout="this.style.background='${isRejected ? '#fafafa' : 'transparent'}'">
                     <td style="padding: 12px 14px;">
-                      <input type="checkbox" ${isPushed ? 'disabled' : ''} value="${o.id}" 
+                      <input type="checkbox" ${isApproved || isRejected ? 'disabled' : ''} value="${o.id}" 
                         ${ordersManagementState.selectedOrderIds.has(o.id) ? 'checked' : ''}
                         onchange="toggleSelectOrder('${o.id}', this.checked)">
                     </td>
                     <td style="padding: 12px 14px;">
-                      <strong style="color: var(--notion-ink);">${escapeHtml(o.billNo || o.id)}</strong>
+                      <strong style="color: var(--notion-ink); font-family: var(--font-mono);">${escapeHtml(o.billNo || o.id)}</strong>
                       <div style="font-size: 0.72rem; color: var(--notion-muted);">${formatDate(o.createdAt)}</div>
                     </td>
                     <td style="padding: 12px 14px;">
-                      <div style="font-weight: 500;">${escapeHtml(o.customer?.name || 'Walk-in')}</div>
+                      <div style="font-weight: 600; color: var(--notion-ink);">${escapeHtml(o.customer?.name || 'Walk-in')}</div>
                       <div style="font-size: 0.75rem; color: var(--notion-secondary);">${escapeHtml(o.customer?.phone || '-')}</div>
                     </td>
                     <td style="padding: 12px 14px;">
                       <span class="badge" style="background: #eef2f6; font-size: 0.72rem; font-weight: 600;">${escapeHtml(o.stallNo || 'Stall TBD')}</span>
                       <div style="font-size: 0.8rem; color: var(--notion-ink); margin-top: 2px;">${escapeHtml(o.vendorName || 'Unassigned')}</div>
+                    </td>
+                    <td style="padding: 12px 14px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                      <span title="${escapeHtml(firstItemTitle)}">${escapeHtml(firstItemTitle)}</span>
+                      ${itemsCount > 1 ? `<span class="badge badge-outline" style="font-size: 0.68rem; margin-left: 2px;">+${itemsCount - 1}</span>` : ''}
                     </td>
                     <td style="padding: 12px 14px; text-align: right; font-weight: 600;">
                       ₹${Number(gross).toLocaleString('en-IN')}
@@ -3106,40 +3201,53 @@ async function loadAndRenderOrdersTable() {
                     </td>
                     <td style="padding: 12px 14px;">
                       <div style="font-size: 0.78rem; font-weight: 500;">${escapeHtml(o.payment?.method || 'Prepaid')}</div>
-                      <div style="font-size: 0.7rem; color: var(--notion-muted); font-family: var(--font-mono);">${escapeHtml(o.payment?.paymentId ? String(o.payment.paymentId).slice(-10) : '-')}</div>
+                      <div style="font-size: 0.7rem; color: var(--notion-muted); font-family: var(--font-mono);">${escapeHtml(o.payment?.paymentId ? String(o.payment.paymentId).slice(-8) : '-')}</div>
                     </td>
                     <td style="padding: 12px 14px;">
-                      ${isPushed ? `
-                        <span class="badge" style="background: #d4edda; color: #155724; font-size: 0.75rem; font-weight: 600;">
-                          ✓ Shopify #${escapeHtml(String(o.shopifyOrderNumber || o.shopifyOrderId))}
+                      ${isApproved ? `
+                        <span class="badge" style="background: #d4edda; color: #155724; font-size: 0.74rem; font-weight: 600;">
+                          ✅ Approved
                         </span>
-                      ` : isFailed ? `
-                        <span class="badge" style="background: #f8d7da; color: #721c24; font-size: 0.75rem; font-weight: 600;" title="${escapeHtml(o.shopifyError || 'Error')}">
-                          ✕ Push Failed
+                      ` : isRejected ? `
+                        <span class="badge" style="background: #f8d7da; color: #721c24; font-size: 0.74rem; font-weight: 600;" title="${escapeHtml(o.rejectionReason || 'Rejected')}">
+                          ❌ Rejected
                         </span>
                       ` : `
-                        <span class="badge" style="background: #fff3cd; color: #856404; font-size: 0.75rem; font-weight: 600;">
-                          ⏳ Awaiting Push
+                        <span class="badge" style="background: #fff3cd; color: #856404; font-size: 0.74rem; font-weight: 600;">
+                          ⏳ Pending Approval
                         </span>
                       `}
                     </td>
                     <td style="padding: 12px 14px;">
-                      <span class="badge" style="font-size: 0.72rem; ${o.status === 'APPROVED' ? 'background: #e8f4fd; color: #0075DE;' : 'background: #f0f0f0; color: #555;'}">
-                        ${escapeHtml(o.status || 'PENDING')}
-                      </span>
+                      ${isPushed ? `
+                        <span class="badge" style="background: #e8f4fd; color: #0075DE; font-size: 0.74rem; font-weight: 600;">
+                          ✓ #${escapeHtml(String(o.shopifyOrderNumber || o.shopifyOrderId))}
+                        </span>
+                      ` : isFailed ? `
+                        <span class="badge" style="background: #f8d7da; color: #721c24; font-size: 0.74rem; font-weight: 600;" title="${escapeHtml(o.shopifyError || 'Error')}">
+                          ✕ Push Failed
+                        </span>
+                      ` : `
+                        <span class="badge" style="background: #f0f0f0; color: #666; font-size: 0.74rem;">
+                          Not Pushed
+                        </span>
+                      `}
                     </td>
                     <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
-                      <div style="display: inline-flex; gap: 6px;">
+                      <div style="display: inline-flex; gap: 6px; align-items: center;">
                         <button class="btn btn-outline btn-xs" onclick="openViewOrderModal('${o.id}')" title="Inspect Order Details">
                           👁️ View
                         </button>
                         ${getUserRole() === 'super_admin' ? `
-                          <button class="btn btn-outline btn-xs" onclick="openEditOrderModal('${o.id}')" title="Edit Stall / Vendor / Customer">
-                            ✏️ Edit
-                          </button>
-                          ${!isPushed ? `
-                            <button class="btn btn-primary btn-xs" id="pushBtn_${o.id}" onclick="pushSingleOrderToShopify('${o.id}')">
-                              🚀 Push to Shopify
+                          ${!isApproved && !isRejected ? `
+                            <button class="btn btn-outline btn-xs" onclick="openEditOrderModal('${o.id}')" title="Edit Customer / Stall">
+                              ✏️ Edit
+                            </button>
+                            <button class="btn btn-primary btn-xs" id="pushBtn_${o.id}" onclick="pushSingleOrderToShopify('${o.id}')" style="background: #008060; border-color: #008060;" title="Approve order & create in Shopify">
+                              ✅ Approve & Push
+                            </button>
+                            <button class="btn btn-outline btn-xs" onclick="rejectSingleOrder('${o.id}')" style="color: #C4122F;" title="Reject this order">
+                              ❌ Reject
                             </button>
                           ` : ''}
                         ` : ''}
@@ -3163,6 +3271,11 @@ function handleOrderSearch(val) {
   loadAndRenderOrdersTable();
 }
 
+function setOrderStatusFilter(status) {
+  ordersManagementState.statusFilter = status;
+  renderOrdersManagementView();
+}
+
 function setOrderShopifyFilter(status) {
   ordersManagementState.shopifyFilter = status;
   renderOrdersManagementView();
@@ -3171,6 +3284,7 @@ function setOrderShopifyFilter(status) {
 function toggleSelectOrder(id, checked) {
   if (checked) ordersManagementState.selectedOrderIds.add(id);
   else ordersManagementState.selectedOrderIds.delete(id);
+  updateBulkButtonLabel();
 }
 
 function toggleSelectAllOrders(checked) {
@@ -3180,22 +3294,35 @@ function toggleSelectAllOrders(checked) {
     if (checked) ordersManagementState.selectedOrderIds.add(cb.value);
     else ordersManagementState.selectedOrderIds.delete(cb.value);
   });
+  updateBulkButtonLabel();
 }
 
-// Push Single Order to Shopify (Super Admin Only)
+function updateBulkButtonLabel() {
+  const bulkBtn = document.getElementById('btnBulkApproveTop');
+  if (!bulkBtn) return;
+  const selCount = ordersManagementState.selectedOrderIds.size;
+  if (selCount > 0) {
+    bulkBtn.textContent = `🚀 Bulk Approve Selected (${selCount})`;
+  } else {
+    const pending = (ordersManagementState.ordersList || []).filter(o => o.status === 'PENDING_APPROVAL' || (!o.status && !o.shopifyOrderId));
+    bulkBtn.textContent = pending.length > 0 ? `🚀 Bulk Approve All Pending (${pending.length})` : `🚀 Bulk Approve to Shopify`;
+  }
+}
+
+// Push Single Order to Shopify (Approve Action)
 async function pushSingleOrderToShopify(orderId) {
   if (getUserRole() !== 'super_admin') {
-    toast('Access Denied: Only Super Admin can push orders to Shopify.', 'error');
+    toast('Access Denied: Only Super Admin can approve and push orders to Shopify.', 'error');
     return;
   }
 
   const btn = document.getElementById(`pushBtn_${orderId}`);
   if (btn) {
     btn.disabled = true;
-    btn.textContent = '⏳ Pushing...';
+    btn.textContent = '⏳ Approving...';
   }
 
-  toast('Creating Shopify Order with Webkul stall tagging...', 'info');
+  toast('Approving order & pushing to Shopify Admin API...', 'info');
 
   try {
     const res = await fetch(`/api/orders/${orderId}/push-to-shopify`, {
@@ -3205,42 +3332,104 @@ async function pushSingleOrderToShopify(orderId) {
     const data = await res.json();
 
     if (data.success) {
-      toast(`✓ Shopify Order #${data.shopifyOrderNumber} created successfully!`, 'success');
+      toast(`✓ Order #${data.order?.billNo || orderId} approved! Shopify Order #${data.shopifyOrderNumber} created and Overall Settlement updated.`, 'success');
       await loadAndRenderOrdersTable();
+      await loadVendorsSummary(); // Sync overall settlement
     } else {
-      toast(`Push rejected: ${data.error || 'Shopify API error'}`, 'error');
+      toast(`Approval failed: ${data.error || 'Shopify API error'}`, 'error');
       if (btn) {
         btn.disabled = false;
-        btn.textContent = 'Retry Push';
+        btn.textContent = 'Retry Approve';
       }
     }
   } catch (err) {
-    toast(`Network failure during Shopify push: ${err.message}`, 'error');
+    toast(`Network failure during approval: ${err.message}`, 'error');
     if (btn) {
       btn.disabled = false;
-      btn.textContent = 'Retry Push';
+      btn.textContent = 'Retry Approve';
     }
   }
 }
 
-// Bulk Push to Shopify
+// Reject Single Order
+async function rejectSingleOrder(orderId) {
+  if (getUserRole() !== 'super_admin') {
+    toast('Access Denied: Only Super Admin can reject orders.', 'error');
+    return;
+  }
+  const reason = prompt('Please enter the reason for rejecting this order (e.g. Canceled at stall, Duplicate bill):');
+  if (!reason || !reason.trim()) return;
+
+  try {
+    const res = await fetch(`/api/orders/${orderId}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason.trim() })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('Order marked as Rejected.', 'success');
+      await loadAndRenderOrdersTable();
+      await loadVendorsSummary();
+    } else {
+      toast(data.error || 'Failed to reject order', 'error');
+    }
+  } catch (err) {
+    toast('Error rejecting order: ' + err.message, 'error');
+  }
+}
+
+// Simulate a Staging Order from POS
+async function simulatePosOrder() {
+  if (getUserRole() !== 'super_admin') {
+    toast('Access Denied: Only Super Admin can simulate POS orders.', 'error');
+    return;
+  }
+  toast('Simulating new customer bill from POS billing terminal...', 'info');
+  try {
+    const res = await fetch('/api/orders/simulate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Staged new POS Bill #${data.order.billNo} for ₹${data.order.totals?.grossAmount}! Ready for approval.`, 'success');
+      ordersManagementState.statusFilter = 'PENDING_APPROVAL';
+      await renderOrdersManagementView();
+    } else {
+      toast(data.error || 'Simulation failed', 'error');
+    }
+  } catch (err) {
+    toast('Simulation error: ' + err.message, 'error');
+  }
+}
+
+// Bulk Push / Approve Orders
 async function bulkPushApprovedOrders() {
   if (getUserRole() !== 'super_admin') {
     toast('Access Denied: Only Super Admin can execute bulk push.', 'error');
     return;
   }
 
-  const ids = Array.from(ordersManagementState.selectedOrderIds);
+  let ids = Array.from(ordersManagementState.selectedOrderIds);
   if (ids.length === 0) {
-    toast('Please select at least one unpushed order to push to Shopify.', 'error');
-    return;
+    // If none selected, default to all pending unpushed orders
+    const pendingOrders = (ordersManagementState.ordersList || []).filter(o => o.status === 'PENDING_APPROVAL' || (!o.status && !o.shopifyOrderId));
+    if (pendingOrders.length === 0) {
+      toast('No pending orders available to approve.', 'info');
+      return;
+    }
+    if (!confirm(`No individual orders selected. Do you want to approve and push all ${pendingOrders.length} pending orders to Shopify?`)) {
+      return;
+    }
+    ids = pendingOrders.map(o => o.id);
+  } else {
+    if (!confirm(`Are you sure you want to approve and push ${ids.length} selected orders to Shopify?`)) {
+      return;
+    }
   }
 
-  if (!confirm(`Are you sure you want to push ${ids.length} orders to Shopify? This action is create-only.`)) {
-    return;
-  }
-
-  toast(`Pushing ${ids.length} orders to Shopify...`, 'info');
+  toast(`Approving and pushing ${ids.length} orders to Shopify...`, 'info');
 
   try {
     const res = await fetch('/api/orders/bulk-push-to-shopify', {
@@ -3252,9 +3441,10 @@ async function bulkPushApprovedOrders() {
 
     if (data.success) {
       const successCount = data.results.filter(r => r.success).length;
-      toast(`✓ Successfully created ${successCount} of ${ids.length} orders in Shopify!`, 'success');
+      toast(`✓ Successfully approved and created ${successCount} of ${ids.length} orders in Shopify! Overall Settlement updated.`, 'success');
       ordersManagementState.selectedOrderIds.clear();
       await loadAndRenderOrdersTable();
+      await loadVendorsSummary();
     } else {
       toast(`Bulk push failed: ${data.error}`, 'error');
     }

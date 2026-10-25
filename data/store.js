@@ -178,7 +178,7 @@ class Store {
     let vendorBills = this.data.billRows.filter(r => r.vendorId === vendorId);
     vendorBills = this.filterByDateRange(vendorBills, 'createdAt', startDate, endDate);
 
-    const nonVoidBills = vendorBills.filter(r => !r.isVoid);
+    const nonVoidBills = vendorBills.filter(r => !r.isVoid && r.isApproved !== false);
     const grossSales = nonVoidBills.reduce((acc, r) => acc + Number(r.billAmount || 0), 0);
 
     let vendorReturns = this.data.returns.filter(ret => ret.vendorId === vendorId);
@@ -382,7 +382,8 @@ class Store {
       customerName: newOrder.customer.name,
       mobile: newOrder.customer.phone,
       source: 'Internal Order Flow',
-      status: 'Paid',
+      status: newOrder.status === 'APPROVED' ? 'Paid' : 'Pending Approval',
+      isApproved: newOrder.status === 'APPROVED',
       isVoid: false,
       voidReason: null,
       mismatchFlag: false,
@@ -504,6 +505,7 @@ class Store {
     const order = this.getInternalOrderById(id);
     if (!order) return null;
 
+    order.status = 'APPROVED';
     order.shopifySyncStatus = 'PUSHED';
     order.shopifyOrderId = String(shopifyOrderId);
     order.shopifyOrderNumber = shopifyOrderNumber;
@@ -512,10 +514,12 @@ class Store {
     order.shopifyError = null;
     order.updatedAt = new Date().toISOString();
 
-    // Also update linked billRow
+    // Also update linked billRow so it enters official settlement calculations
     const linkedBill = (this.data.billRows || []).find(r => r.internalOrderId === order.id || r.billCopyNo === order.billNo);
     if (linkedBill) {
       linkedBill.shopifyOrderId = order.shopifyOrderId;
+      linkedBill.isApproved = true;
+      linkedBill.status = 'Paid';
     }
 
     this.logAudit(
@@ -550,6 +554,39 @@ class Store {
       'NOT_PUSHED',
       'FAILED',
       `Shopify push failed: ${error}`
+    );
+
+    this.save();
+    return order;
+  }
+
+  rejectInternalOrder(id, reason = 'Rejected by Super Admin', user = 'Super Admin') {
+    const order = this.getInternalOrderById(id);
+    if (!order) return null;
+
+    order.status = 'REJECTED';
+    order.rejectionReason = reason;
+    order.rejectedBy = typeof user === 'string' ? user : (user?.name || 'Super Admin');
+    order.rejectedAt = new Date().toISOString();
+    order.updatedAt = new Date().toISOString();
+
+    const linkedBill = (this.data.billRows || []).find(r => r.internalOrderId === order.id || r.billCopyNo === order.billNo);
+    if (linkedBill) {
+      linkedBill.isVoid = true;
+      linkedBill.isApproved = false;
+      linkedBill.voidReason = reason;
+      linkedBill.status = 'Rejected';
+    }
+
+    this.logAudit(
+      order.rejectedBy,
+      'ORDER_REJECTED',
+      'internal_orders',
+      order.id,
+      'status',
+      'PENDING_APPROVAL',
+      'REJECTED',
+      reason
     );
 
     this.save();
