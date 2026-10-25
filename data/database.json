@@ -44,7 +44,8 @@
       "code": "PSC",
       "category": "Footwear",
       "webkulSellerId": "WK-PSC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_NDS",
@@ -54,7 +55,8 @@
       "code": "NDS",
       "category": "Gifts and home decor",
       "webkulSellerId": "WK-NDS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SKC",
@@ -64,7 +66,8 @@
       "code": "SKC",
       "category": "Clothing",
       "webkulSellerId": "WK-SKC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_AZP",
@@ -74,7 +77,8 @@
       "code": "AZP",
       "category": "Perfumes",
       "webkulSellerId": "WK-AZP",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_AJC",
@@ -84,7 +88,8 @@
       "code": "AJC",
       "category": "Sarees & Frocks",
       "webkulSellerId": "WK-AJC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_GKF",
@@ -94,7 +99,8 @@
       "code": "GKF",
       "category": "Women Clothing",
       "webkulSellerId": "WK-GKF",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_ALF",
@@ -104,7 +110,8 @@
       "code": "ALF",
       "category": "1 Gram Jewellery",
       "webkulSellerId": "WK-ALF",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_CHA",
@@ -114,7 +121,8 @@
       "code": "CHA",
       "category": "Electronics & Home Appliances",
       "webkulSellerId": "WK-CHA",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_GAL",
@@ -124,7 +132,8 @@
       "code": "GAL",
       "category": "Kids Wear",
       "webkulSellerId": "WK-GAL",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_KLH",
@@ -134,7 +143,8 @@
       "code": "KLH",
       "category": "Home decor and wellness products",
       "webkulSellerId": "WK-KLH",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SS23",
@@ -144,7 +154,8 @@
       "code": "SS23",
       "category": "Silks",
       "webkulSellerId": "WK-SS23",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_RSE",
@@ -154,7 +165,8 @@
       "code": "RSE",
       "category": "Sarees",
       "webkulSellerId": "WK-RSE",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_VTD",
@@ -164,7 +176,8 @@
       "code": "VTD",
       "category": "Sarees",
       "webkulSellerId": "WK-VTD",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SSM",
@@ -174,7 +187,8 @@
       "code": "SSM",
       "category": "Sarees",
       "webkulSellerId": "WK-SSM",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SVCC",
@@ -184,7 +198,8 @@
       "code": "SVCC",
       "category": "Customised Gifts & Charms",
       "webkulSellerId": "WK-SVCC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SKC",
@@ -194,7 +209,8 @@
       "code": "SKC",
       "category": "Clothing",
       "webkulSellerId": "WK-SKC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_CTM",
@@ -204,7 +220,8 @@
       "code": "CTM",
       "category": "Misc.",
       "webkulSellerId": "WK-CTM",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_MKB",
@@ -214,7 +231,8 @@
       "code": "MKB",
       "category": "Clothing",
       "webkulSellerId": "WK-MKB",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_VTF",
@@ -224,7 +242,8 @@
       "code": "VTF",
       "category": "Pattu fancy design sarees",
       "webkulSellerId": "WK-VTF",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SLA",
@@ -234,7 +253,8 @@
       "code": "SLA",
       "category": "Organic and ayurvedic cosmotics",
       "webkulSellerId": "WK-SLA",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_MVC",
@@ -244,7 +264,8 @@
       "code": "MVC",
       "category": "Sarees, dresses, night wear,tops",
       "webkulSellerId": "WK-MVC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SOM",
@@ -254,7 +275,8 @@
       "code": "SOM",
       "category": "Opticals",
       "webkulSellerId": "WK-SOM",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SLF",
@@ -264,7 +286,8 @@
       "code": "SLF",
       "category": "fashion",
       "webkulSellerId": "WK-SLF",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SNSH",
@@ -274,7 +297,8 @@
       "code": "SNSH",
       "category": "Women Wear",
       "webkulSellerId": "WK-SNSH",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_KVN",
@@ -284,7 +308,8 @@
       "code": "KVN",
       "category": "Spiritual",
       "webkulSellerId": "WK-KVN",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SMS",
@@ -294,7 +319,8 @@
       "code": "SMS",
       "category": "Sarees",
       "webkulSellerId": "WK-SMS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SHH",
@@ -304,7 +330,8 @@
       "code": "SHH",
       "category": "Sarees",
       "webkulSellerId": "WK-SHH",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_LEW",
@@ -314,7 +341,8 @@
       "code": "LEW",
       "category": "Footware",
       "webkulSellerId": "WK-LEW",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_TPW",
@@ -324,7 +352,8 @@
       "code": "TPW",
       "category": "Misc.",
       "webkulSellerId": "WK-TPW",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_GDS",
@@ -334,7 +363,8 @@
       "code": "GDS",
       "category": "Gadgets,toys and wall arts",
       "webkulSellerId": "WK-GDS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SAN",
@@ -344,7 +374,8 @@
       "code": "SAN",
       "category": "Hand crafted hair care and skin care",
       "webkulSellerId": "WK-SAN",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SBS",
@@ -354,7 +385,8 @@
       "code": "SBS",
       "category": "Designer Studio",
       "webkulSellerId": "WK-SBS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_LBC",
@@ -364,7 +396,8 @@
       "code": "LBC",
       "category": "Bangles",
       "webkulSellerId": "WK-LBC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_STY14",
@@ -374,7 +407,8 @@
       "code": "STY14",
       "category": "Clothing",
       "webkulSellerId": "WK-STY14",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_VDS",
@@ -384,7 +418,8 @@
       "code": "VDS",
       "category": "Health Care",
       "webkulSellerId": "WK-VDS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_KGW",
@@ -394,7 +429,8 @@
       "code": "KGW",
       "category": "Shawls & Carpets",
       "webkulSellerId": "WK-KGW",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_LTC",
@@ -404,7 +440,8 @@
       "code": "LTC",
       "category": "Clothing",
       "webkulSellerId": "WK-LTC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_KKM",
@@ -414,7 +451,8 @@
       "code": "KKM",
       "category": "Handlooms",
       "webkulSellerId": "WK-KKM",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_BHC",
@@ -424,7 +462,8 @@
       "code": "BHC",
       "category": "Kalamkaari",
       "webkulSellerId": "WK-BHC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_LDS",
@@ -434,7 +473,8 @@
       "code": "LDS",
       "category": "Clothing",
       "webkulSellerId": "WK-LDS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_GOC",
@@ -444,7 +484,8 @@
       "code": "GOC",
       "category": "Kalamkaari",
       "webkulSellerId": "WK-GOC",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_BS85",
@@ -454,7 +495,8 @@
       "code": "BS85",
       "category": "Clothing",
       "webkulSellerId": "WK-BS85",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_PI87",
@@ -464,7 +506,8 @@
       "code": "PI87",
       "category": "Innovations",
       "webkulSellerId": "WK-PI87",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_RBS88",
@@ -474,7 +517,8 @@
       "code": "RBS88",
       "category": "Fashion",
       "webkulSellerId": "WK-RBS88",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_DTS",
@@ -484,7 +528,8 @@
       "code": "DTS",
       "category": "Textiles",
       "webkulSellerId": "WK-DTS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SCW",
@@ -494,7 +539,8 @@
       "code": "SCW",
       "category": "Jamdani Sarees & Dress",
       "webkulSellerId": "WK-SCW",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_KKA",
@@ -504,7 +550,8 @@
       "code": "KKA",
       "category": "Kitchenware, Appliances, Giftware, Stablizers",
       "webkulSellerId": "WK-KKA",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SNJ",
@@ -514,7 +561,8 @@
       "code": "SNJ",
       "category": "Jewellery",
       "webkulSellerId": "WK-SNJ",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_SMG",
@@ -524,7 +572,8 @@
       "code": "SMG",
       "category": "Anti Tarnish Jewellery",
       "webkulSellerId": "WK-SMG",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_NBS",
@@ -534,7 +583,8 @@
       "code": "NBS",
       "category": "Hand Bags",
       "webkulSellerId": "WK-NBS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_JOB",
@@ -544,7 +594,8 @@
       "code": "JOB",
       "category": "Ladies wear",
       "webkulSellerId": "WK-JOB",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_MRS",
@@ -554,7 +605,8 @@
       "code": "MRS",
       "category": "Sarees",
       "webkulSellerId": "WK-MRS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_LABF",
@@ -564,7 +616,8 @@
       "code": "LABF",
       "category": "Bags",
       "webkulSellerId": "WK-LABF",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_KOS",
@@ -574,7 +627,8 @@
       "code": "KOS",
       "category": "Sarees",
       "webkulSellerId": "WK-KOS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_AMB",
@@ -584,7 +638,8 @@
       "code": "AMB",
       "category": "Sarees & Dresses",
       "webkulSellerId": "WK-AMB",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_RSE",
@@ -594,7 +649,8 @@
       "code": "RSE",
       "category": "Silk Sarees",
       "webkulSellerId": "WK-RSE",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_AAD",
@@ -604,7 +660,8 @@
       "code": "AAD",
       "category": "Footware",
       "webkulSellerId": "WK-AAD",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_GNS",
@@ -614,7 +671,8 @@
       "code": "GNS",
       "category": "Gifts",
       "webkulSellerId": "WK-GNS",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     },
     {
       "id": "v_HPDALL",
@@ -624,7 +682,8 @@
       "code": "HPDALL",
       "category": "Misc",
       "webkulSellerId": "WK-HPDALL",
-      "commissionPct": 15
+      "commissionPct": 15,
+      "active": true
     }
   ],
   "billRows": [
@@ -39366,6 +39425,1062 @@
   ],
   "auditLog": [
     {
+      "id": "aud_1792783330640_890",
+      "timestamp": "2026-10-23T19:22:10.755Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792783029737_46",
+      "timestamp": "2026-10-23T19:17:09.738Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792782729896_922",
+      "timestamp": "2026-10-23T19:12:09.896Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792782430846_259",
+      "timestamp": "2026-10-23T19:07:10.846Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792782130001_585",
+      "timestamp": "2026-10-23T19:02:10.013Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792781829796_953",
+      "timestamp": "2026-10-23T18:57:09.796Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792781529946_905",
+      "timestamp": "2026-10-23T18:52:09.947Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792781230258_813",
+      "timestamp": "2026-10-23T18:47:10.258Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792780929867_849",
+      "timestamp": "2026-10-23T18:42:09.867Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792780630063_948",
+      "timestamp": "2026-10-23T18:37:10.063Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792780331586_249",
+      "timestamp": "2026-10-23T18:32:11.586Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792780029615_655",
+      "timestamp": "2026-10-23T18:27:09.615Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792779729652_82",
+      "timestamp": "2026-10-23T18:22:09.652Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792779429441_952",
+      "timestamp": "2026-10-23T18:17:09.441Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792779129513_449",
+      "timestamp": "2026-10-23T18:12:09.513Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792778829401_355",
+      "timestamp": "2026-10-23T18:07:09.402Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792778529759_58",
+      "timestamp": "2026-10-23T18:02:09.760Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792778229993_242",
+      "timestamp": "2026-10-23T17:57:09.993Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792777929485_693",
+      "timestamp": "2026-10-23T17:52:09.486Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792777631592_370",
+      "timestamp": "2026-10-23T17:47:11.652Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792777335740_361",
+      "timestamp": "2026-10-23T17:42:15.755Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792777030629_225",
+      "timestamp": "2026-10-23T17:37:10.629Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792776731354_657",
+      "timestamp": "2026-10-23T17:32:11.354Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792776434851_756",
+      "timestamp": "2026-10-23T17:27:14.852Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792776144695_833",
+      "timestamp": "2026-10-23T17:22:24.709Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792775838590_257",
+      "timestamp": "2026-10-23T17:17:18.591Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792775530160_674",
+      "timestamp": "2026-10-23T17:12:10.161Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792775238182_266",
+      "timestamp": "2026-10-23T17:07:18.182Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792775082767_648",
+      "timestamp": "2026-10-23T17:04:42.773Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792774647305_867",
+      "timestamp": "2026-10-23T16:57:27.305Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792774353550_26",
+      "timestamp": "2026-10-23T16:52:33.554Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792774060425_567",
+      "timestamp": "2026-10-23T16:47:40.430Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792773764046_260",
+      "timestamp": "2026-10-23T16:42:44.314Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792773444950_256",
+      "timestamp": "2026-10-23T16:37:24.953Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792773128535_680",
+      "timestamp": "2026-10-23T16:32:08.535Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792773012892_67",
+      "timestamp": "2026-10-23T16:30:12.892Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "750 orders → 1226 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 45 vendors matched"
+    },
+    {
+      "id": "aud_1792772551551_913",
+      "timestamp": "2026-10-23T16:22:31.553Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792771945646_956",
+      "timestamp": "2026-10-23T16:12:25.834Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792771796931_27",
+      "timestamp": "2026-10-23T16:09:56.934Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "750 orders → 1226 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 45 vendors matched"
+    },
+    {
+      "id": "aud_1792771388000_1",
+      "timestamp": "2026-10-23T16:03:08.001Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1000 orders → 1623 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 48 vendors matched"
+    },
+    {
+      "id": "aud_1792770750991_623",
+      "timestamp": "2026-10-23T15:52:31.313Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792770418697_125",
+      "timestamp": "2026-10-23T15:46:58.735Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "0 orders → 0 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 0 vendors matched"
+    },
+    {
+      "id": "aud_1792768712743_191",
+      "timestamp": "2026-10-23T15:18:32.743Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792768411302_656",
+      "timestamp": "2026-10-23T15:13:31.305Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792768111134_424",
+      "timestamp": "2026-10-23T15:08:31.134Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792767811650_147",
+      "timestamp": "2026-10-23T15:03:31.651Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792767529757_28",
+      "timestamp": "2026-10-23T14:58:49.758Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792767234085_63",
+      "timestamp": "2026-10-23T14:53:54.135Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792765980213_241",
+      "timestamp": "2026-10-23T14:33:00.213Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792765679470_628",
+      "timestamp": "2026-10-23T14:27:59.471Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792765391915_722",
+      "timestamp": "2026-10-23T14:23:11.915Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792765079344_294",
+      "timestamp": "2026-10-23T14:17:59.344Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792764779355_308",
+      "timestamp": "2026-10-23T14:12:59.356Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792764479869_268",
+      "timestamp": "2026-10-23T14:07:59.869Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792764180358_270",
+      "timestamp": "2026-10-23T14:03:00.358Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792763879841_125",
+      "timestamp": "2026-10-23T13:57:59.841Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792763588092_132",
+      "timestamp": "2026-10-23T13:53:08.092Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792763279928_621",
+      "timestamp": "2026-10-23T13:47:59.928Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792762979692_909",
+      "timestamp": "2026-10-23T13:42:59.692Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792762679485_473",
+      "timestamp": "2026-10-23T13:37:59.485Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792762379551_904",
+      "timestamp": "2026-10-23T13:32:59.551Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792762079857_593",
+      "timestamp": "2026-10-23T13:27:59.857Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792761787624_423",
+      "timestamp": "2026-10-23T13:23:07.624Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792761479349_730",
+      "timestamp": "2026-10-23T13:17:59.349Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792761181402_237",
+      "timestamp": "2026-10-23T13:13:01.402Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792760879626_21",
+      "timestamp": "2026-10-23T13:07:59.627Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792760580329_751",
+      "timestamp": "2026-10-23T13:03:00.329Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792760279695_147",
+      "timestamp": "2026-10-23T12:57:59.695Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792759984715_469",
+      "timestamp": "2026-10-23T12:53:04.715Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792759680729_323",
+      "timestamp": "2026-10-23T12:48:00.729Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792759379211_545",
+      "timestamp": "2026-10-23T12:42:59.212Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792759079959_184",
+      "timestamp": "2026-10-23T12:37:59.959Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792758779223_340",
+      "timestamp": "2026-10-23T12:32:59.223Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792758479497_205",
+      "timestamp": "2026-10-23T12:27:59.497Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792758180987_227",
+      "timestamp": "2026-10-23T12:23:00.987Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792757879699_527",
+      "timestamp": "2026-10-23T12:17:59.699Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792757579089_273",
+      "timestamp": "2026-10-23T12:12:59.089Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792757279627_830",
+      "timestamp": "2026-10-23T12:07:59.627Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792756979046_471",
+      "timestamp": "2026-10-23T12:02:59.046Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792756678966_692",
+      "timestamp": "2026-10-23T11:57:58.966Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792756384921_903",
+      "timestamp": "2026-10-23T11:53:04.940Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792756079202_477",
+      "timestamp": "2026-10-23T11:47:59.202Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792755779517_498",
+      "timestamp": "2026-10-23T11:42:59.517Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792755479452_314",
+      "timestamp": "2026-10-23T11:37:59.452Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792755179057_828",
+      "timestamp": "2026-10-23T11:32:59.057Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792754879324_378",
+      "timestamp": "2026-10-23T11:27:59.324Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792754585468_235",
+      "timestamp": "2026-10-23T11:23:05.479Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1792754279296_234",
+      "timestamp": "2026-10-23T11:17:59.296Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1221 orders → 1930 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
       "id": "aud_1792753979871_130",
       "timestamp": "2026-10-23T11:12:59.871Z",
       "user": "System (Shopify Sync)",
@@ -46686,7 +47801,7 @@
       "reason": "Customer canceled item at stall before handover"
     }
   ],
-  "lastShopifySync": "2026-10-23T11:12:59.847Z",
+  "lastShopifySync": "2026-10-23T19:22:10.353Z",
   "lastSyncStats": {
     "totalOrders": 1221,
     "totalLineItems": 2126,
@@ -46753,5 +47868,6 @@
       "HP CREATION",
       "Halfpe Deals"
     ]
-  }
+  },
+  "internalOrders": []
 }

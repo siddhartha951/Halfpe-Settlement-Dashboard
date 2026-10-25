@@ -135,6 +135,172 @@ class ShopifyClient {
   }
 
   /**
+   * Generic POST request to Shopify Admin API (Create-Only, Idempotent)
+   */
+  async post(endpoint, body = {}) {
+    const url = `${this.baseUrl}${endpoint}`;
+    const payload = JSON.stringify(body);
+
+    return new Promise((resolve, reject) => {
+      const parsedUrl = new URL(url);
+      const options = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || 443,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: 'POST',
+        headers: {
+          'X-Shopify-Access-Token': this.accessToken,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', chunk => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve({ data: JSON.parse(data), headers: res.headers, statusCode: res.statusCode });
+            } catch (e) {
+              reject(new Error(`JSON parse error: ${e.message}`));
+            }
+          } else {
+            reject(new Error(`Shopify API error ${res.statusCode}: ${data.substring(0, 500)}`));
+          }
+        });
+      });
+
+      req.on('error', reject);
+      req.setTimeout(30000, () => {
+        req.destroy();
+        reject(new Error('Shopify API request timeout (30s)'));
+      });
+      req.write(payload);
+      req.end();
+    });
+  }
+
+  /**
+   * Push an approved internal HalfPe order to Shopify as a new order.
+   * STRICTLY CREATE-ONLY (never updates/overwrites existing Shopify orders).
+   */
+  async createShopifyOrder(internalOrder) {
+    if (!this.isConfigured()) {
+      throw new Error('Shopify API is not configured in .env (store URL or token missing).');
+    }
+
+    if (!internalOrder) {
+      throw new Error('Internal order payload is required.');
+    }
+
+    // Duplicate check guard:
+    if (internalOrder.shopifyOrderId) {
+      throw new Error(`Order already pushed to Shopify (Order ID: ${internalOrder.shopifyOrderId}).`);
+    }
+
+    const stallNoClean = ('00' + String(internalOrder.stallNo || '01').replace(/\D/g, '')).slice(-2);
+    const vendorName = internalOrder.vendorName || 'Partner Vendor';
+    const billNo = internalOrder.billNo || `VIJ-${Date.now().toString().slice(-5)}`;
+    const grossAmount = Number(internalOrder.totals?.grossAmount || internalOrder.totals?.payable || 0);
+
+    const tags = [
+      'HPD',
+      'VIJ-Event',
+      'Half Price Days',
+      'SVN Conventions',
+      `Stall-${stallNoClean}`,
+      `Vendor: ${vendorName}`,
+      `Bill-${billNo}`,
+      'Push-By-SuperAdmin'
+    ];
+
+    if (internalOrder.payment?.method && internalOrder.payment.method.toLowerCase().includes('cash')) {
+      tags.push('Pay-Cash', 'COD');
+    } else {
+      tags.push('Pay-Razorpay', 'Online-Prepaid');
+    }
+
+    // Line items builder
+    let lineItems = [];
+    if (Array.isArray(internalOrder.items) && internalOrder.items.length > 0) {
+      lineItems = internalOrder.items.map((item, idx) => ({
+        title: (item.title || item.name || `Expo Product #${idx + 1}`).trim(),
+        price: Number(item.eventPrice || item.price || (grossAmount / internalOrder.items.length)).toFixed(2),
+        quantity: parseInt(item.quantity || item.qty || 1, 10),
+        vendor: vendorName,
+        properties: [
+          { name: 'Stall', value: internalOrder.stallNo },
+          { name: 'Bill_No', value: billNo },
+          { name: '_Webkul_Vendor', value: vendorName }
+        ]
+      }));
+    } else {
+      lineItems.push({
+        title: `${vendorName} - ${internalOrder.stallNo} Expo Sale`,
+        price: grossAmount.toFixed(2),
+        quantity: 1,
+        vendor: vendorName,
+        properties: [
+          { name: 'Stall', value: internalOrder.stallNo },
+          { name: 'Bill_No', value: billNo }
+        ]
+      });
+    }
+
+    // Customer formatting
+    const rawCustName = (internalOrder.customer?.name || 'Walk-in Shopper').trim();
+    const nameParts = rawCustName.split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] || 'Walk-in';
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '.';
+
+    let phoneClean = String(internalOrder.customer?.phone || '').replace(/\D/g, '');
+    let formattedPhone = '';
+    if (phoneClean.length === 10) formattedPhone = `+91${phoneClean}`;
+    else if (phoneClean.length === 12 && phoneClean.startsWith('91')) formattedPhone = `+${phoneClean}`;
+
+    const shopifyOrderPayload = {
+      order: {
+        line_items: lineItems,
+        customer: {
+          first_name: firstName,
+          last_name: lastName,
+          phone: formattedPhone || undefined,
+          email: internalOrder.customer?.email || (formattedPhone ? `${phoneClean}@halfpe.com` : undefined)
+        },
+        financial_status: 'paid',
+        tags: tags.join(', '),
+        note: `Vijayawada Expo Internal Order #${billNo} | Stall: ${internalOrder.stallNo} (${vendorName}) | Paid: ₹${grossAmount} via ${internalOrder.payment?.method || 'Prepaid'} [${internalOrder.payment?.paymentId || 'N/A'}]`,
+        note_attributes: [
+          { name: 'Expo_Bill_No', value: billNo },
+          { name: 'Internal_Order_ID', value: internalOrder.id },
+          { name: 'Stall_No', value: internalOrder.stallNo },
+          { name: 'Vendor_Name', value: vendorName },
+          { name: 'Payment_ID', value: internalOrder.payment?.paymentId || '' }
+        ]
+      }
+    };
+
+    console.log(`[ShopifyClient] Pushing order ${billNo} to Shopify Admin API...`);
+    const response = await this.post('/orders.json', shopifyOrderPayload);
+    const created = response.data && response.data.order;
+
+    if (!created || !created.id) {
+      throw new Error('Shopify returned empty order response.');
+    }
+
+    return {
+      shopifyOrderId: created.id,
+      shopifyOrderNumber: created.order_number || created.name,
+      orderName: created.name,
+      totalPrice: created.total_price,
+      financialStatus: created.financial_status,
+      createdAt: created.created_at
+    };
+  }
+
+  /**
    * Fetch ALL orders with pagination (cursor-based using link header)
    * @param {Object} options
    * @param {string} options.createdAtMin - ISO date (e.g. '2026-10-06T00:00:00+05:30')

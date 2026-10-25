@@ -111,7 +111,8 @@ const USER_CREDENTIALS = [
   { id: 'usr_1', email: 'admin@halfpe.com', password: 'admin@2026', name: 'Krishna (Super Admin)', role: 'super_admin', roleLabel: 'Super Admin', desc: 'Full event settlement, edit & void authorization' },
   { id: 'usr_2', email: 'billing@halfpe.com', password: 'billing@2026', name: 'Ravi Teja (Billing Counter)', role: 'billing_staff', roleLabel: 'Billing Counter Staff', desc: 'Counter POS entry, cash collection & refund requests' },
   { id: 'usr_3', email: 'finance@halfpe.com', password: 'finance@2026', name: 'Ananya Rao (Finance & Accounts)', role: 'finance', roleLabel: 'Finance & Accounts', desc: 'Payouts, bank settlement, daily lock audits' },
-  { id: 'usr_4', email: 'viewer@halfpe.com', password: 'viewer@2026', name: 'Suresh Kumar (Audit Viewer)', role: 'viewer', roleLabel: 'External Auditor', desc: 'Read-only financial view, masked PII phones' }
+  { id: 'usr_4', email: 'viewer@halfpe.com', password: 'viewer@2026', name: 'Suresh Kumar (Audit Viewer)', role: 'viewer', roleLabel: 'External Auditor', desc: 'Read-only financial view, masked PII phones' },
+  { id: 'usr_5', email: 'vendor@halfpe.com', password: 'vendor@2026', name: 'Profit Shoe Co (Vendor User)', role: 'vendor', vendorId: 'v_PSC', roleLabel: 'Vendor User', desc: 'Vendor portal - isolated view of own orders & payouts' }
 ];
 
 // Secure account metadata endpoint - NO PASSWORDS EXPOSED
@@ -122,6 +123,7 @@ app.get('/api/auth/credentials', (req, res) => {
       email: u.email,
       name: u.name,
       role: u.role,
+      vendorId: u.vendorId || null,
       roleLabel: u.roleLabel,
       desc: u.desc
     }))
@@ -146,8 +148,10 @@ app.post('/api/auth/login', (req, res) => {
     id: matched.id,
     name: matched.name,
     email: matched.email,
-    role: matched.role
+    role: matched.role,
+    vendorId: matched.vendorId || null
   };
+  if (matched.vendorId) storeUser.vendorId = matched.vendorId;
 
   currentUser = storeUser;
   res.json({
@@ -156,7 +160,8 @@ app.post('/api/auth/login', (req, res) => {
       id: storeUser.id,
       name: storeUser.name,
       email: storeUser.email,
-      role: storeUser.role
+      role: storeUser.role,
+      vendorId: storeUser.vendorId || null
     },
     token: Buffer.from(`${storeUser.id}:${Date.now()}`).toString('base64'),
     message: `Welcome back, ${storeUser.name}!`
@@ -213,21 +218,56 @@ function checkDayLock(req, res, next) {
 }
 
 // -------------------------------------------------------------
-// 2. Vendors List & Detail (Supports Custom Date Range)
+// 2. Vendors List & Detail (Supports Custom Date Range & Role Isolation)
 // -------------------------------------------------------------
 app.get('/api/vendors', (req, res) => {
-  const { startDate, endDate } = req.query;
+  const { startDate, endDate, includeInactive } = req.query;
   const dateCheck = validateDateRange(startDate, endDate);
   if (!dateCheck.valid) {
     return res.status(400).json({ error: dateCheck.error });
   }
+
+  // Vendor role data isolation
+  if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId) {
+    const single = store.getVendorSummary(currentUser.vendorId, { startDate, endDate });
+    return res.json({
+      vendors: single ? [single] : [],
+      eventTotals: single ? {
+        totalOrders: single.ordersCount,
+        grossSales: single.grossSales,
+        totalReturns: single.returnsAmount,
+        netSales: single.netSales,
+        totalCommission: single.commissionAmount,
+        settlementPayable: single.settlementPayable,
+        alreadyPaid: single.alreadyPaid,
+        balanceToPay: single.balanceToPay
+      } : {
+        totalOrders: 0, grossSales: 0, totalReturns: 0, netSales: 0,
+        totalCommission: 0, settlementPayable: 0, alreadyPaid: 0, balanceToPay: 0
+      },
+      lastShopifySync: store.data.lastShopifySync || null,
+      isVendorIsolated: true
+    });
+  }
+
   const data = store.getAllVendorsSummary({ startDate, endDate });
+  
+  // By default, filter out soft-deactivated vendors unless includeInactive=true
+  if (includeInactive !== 'true' && data.vendors) {
+    data.vendors = data.vendors.filter(v => v.vendor.active !== false);
+  }
+
   res.json(data);
 });
 
 app.get('/api/vendors/:id', (req, res) => {
   try {
     const { id } = req.params;
+    // Vendor isolation guard
+    if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId && currentUser.vendorId !== id) {
+      return res.status(403).json({ error: 'Access denied: You can only view your own vendor dashboard.' });
+    }
+
     const { startDate, endDate } = req.query;
     const dateCheck = validateDateRange(startDate, endDate);
     if (!dateCheck.valid) {
@@ -253,7 +293,7 @@ app.get('/api/vendors/:id', (req, res) => {
     const activeRole = (currentUser && currentUser.role) || 'super_admin';
     const maskedBills = bills.map(b => {
       let maskedMobile = b.mobile || 'N/A';
-      if (activeRole === 'viewer' || activeRole === 'billing_staff') {
+      if (activeRole === 'viewer' || activeRole === 'billing_staff' || activeRole === 'vendor') {
         if (maskedMobile.length >= 4) {
           maskedMobile = 'XXXXXX' + maskedMobile.slice(-4);
         }
@@ -271,6 +311,44 @@ app.get('/api/vendors/:id', (req, res) => {
   } catch (err) {
     console.error('Error in /api/vendors/:id:', err);
     res.status(500).json({ error: err.message || 'Internal server error' });
+  }
+});
+
+// Super Admin Vendor Management (CRUD)
+app.post('/api/vendors', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can add vendors.' });
+  }
+  try {
+    const newVendor = store.addVendor(req.body, currentUser);
+    res.status(201).json({ success: true, vendor: newVendor });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/vendors/:id', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can edit vendor details.' });
+  }
+  try {
+    const updated = store.updateVendor(req.params.id, req.body, currentUser);
+    res.json({ success: true, vendor: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/vendors/:id/toggle-status', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can activate/deactivate vendors.' });
+  }
+  try {
+    const { active } = req.body;
+    const vendor = store.toggleVendorStatus(req.params.id, active, currentUser);
+    res.json({ success: true, vendor });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 
@@ -302,6 +380,171 @@ app.patch('/api/vendors/:id/commission', (req, res) => {
 });
 
 // -------------------------------------------------------------
+// 2.5 Orders Management & Staging Flow (Krishna's Requirement)
+// -------------------------------------------------------------
+// Record Internal Order from POS / Payment Page (DOES NOT create Shopify order automatically)
+app.post('/api/orders/record', (req, res) => {
+  try {
+    const result = store.recordInternalOrder(req.body, currentUser);
+    res.status(result.isDuplicate ? 200 : 201).json({
+      success: true,
+      isDuplicate: result.isDuplicate,
+      order: result.order,
+      message: result.isDuplicate 
+        ? 'Existing order returned (idempotent)' 
+        : 'Order recorded internally in HalfPe database. Awaiting Super Admin review & approval.'
+    });
+  } catch (err) {
+    console.error('[Store] Error recording internal order:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// List Internal Orders
+app.get('/api/orders', (req, res) => {
+  try {
+    const filters = { ...req.query };
+
+    // Strict Vendor Isolation: vendor user only sees their own orders
+    if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId) {
+      filters.vendorId = currentUser.vendorId;
+    }
+
+    const orders = store.getInternalOrders(filters);
+
+    // Mask phone numbers if viewer or billing staff
+    const activeRole = (currentUser && currentUser.role) || 'super_admin';
+    const maskedOrders = orders.map(o => {
+      let phone = o.customer?.phone || '';
+      if (activeRole === 'viewer' || activeRole === 'billing_staff') {
+        if (phone.length >= 4) phone = 'XXXXXX' + phone.slice(-4);
+      }
+      return {
+        ...o,
+        customer: { ...o.customer, phone, rawPhone: o.customer?.phone }
+      };
+    });
+
+    res.json(maskedOrders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Single Order detail
+app.get('/api/orders/:id', (req, res) => {
+  const order = store.getInternalOrderById(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  // Vendor isolation guard
+  if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId && order.vendorId !== currentUser.vendorId) {
+    return res.status(403).json({ error: 'Access denied: You can only view your own orders.' });
+  }
+
+  res.json(order);
+});
+
+// Edit internal order before Shopify push (Super Admin only)
+app.put('/api/orders/:id', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can edit internal order details.' });
+  }
+  try {
+    const updated = store.updateInternalOrder(req.params.id, req.body, currentUser);
+    if (!updated) return res.status(404).json({ error: 'Order not found' });
+    res.json({ success: true, order: updated });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Push approved internal order to Shopify (Super Admin only - Backend Enforced)
+app.post('/api/orders/:id/push-to-shopify', async (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can push orders to Shopify.' });
+  }
+
+  const order = store.getInternalOrderById(req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+
+  // Duplicate guard
+  if (order.shopifyOrderId) {
+    return res.status(400).json({
+      error: `Duplicate push prevented: Order already exists in Shopify (Order ID: ${order.shopifyOrderId}).`
+    });
+  }
+
+  try {
+    console.log(`[PushToShopify] Super Admin "${currentUser.name}" initiated push for Bill #${order.billNo}...`);
+    const shopifyResult = await shopifyClient.createShopifyOrder(order);
+
+    const updatedOrder = store.markOrderPushed(order.id, {
+      shopifyOrderId: shopifyResult.shopifyOrderId,
+      shopifyOrderNumber: shopifyResult.shopifyOrderNumber,
+      pushedBy: currentUser,
+      syncResult: shopifyResult
+    });
+
+    res.json({
+      success: true,
+      message: `Shopify order #${shopifyResult.shopifyOrderNumber} created successfully!`,
+      shopifyOrderId: shopifyResult.shopifyOrderId,
+      shopifyOrderNumber: shopifyResult.shopifyOrderNumber,
+      order: updatedOrder
+    });
+  } catch (err) {
+    console.error(`[PushToShopify] Failed to push Bill #${order.billNo}:`, err.message);
+    store.markOrderPushFailed(order.id, { error: err.message, pushedBy: currentUser });
+    res.status(500).json({
+      success: false,
+      error: `Failed to create order in Shopify: ${err.message}`,
+      order: store.getInternalOrderById(order.id)
+    });
+  }
+});
+
+// Bulk push approved orders to Shopify (Super Admin only)
+app.post('/api/orders/bulk-push-to-shopify', async (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can execute bulk push to Shopify.' });
+  }
+
+  const { orderIds } = req.body;
+  if (!Array.isArray(orderIds) || orderIds.length === 0) {
+    return res.status(400).json({ error: 'orderIds array is required.' });
+  }
+
+  const results = [];
+  for (const id of orderIds) {
+    const order = store.getInternalOrderById(id);
+    if (!order || order.shopifyOrderId) {
+      results.push({ id, success: false, reason: 'Already pushed or order not found' });
+      continue;
+    }
+
+    try {
+      const shopifyResult = await shopifyClient.createShopifyOrder(order);
+      store.markOrderPushed(order.id, {
+        shopifyOrderId: shopifyResult.shopifyOrderId,
+        shopifyOrderNumber: shopifyResult.shopifyOrderNumber,
+        pushedBy: currentUser,
+        syncResult: shopifyResult
+      });
+      results.push({ id, billNo: order.billNo, success: true, shopifyOrderNumber: shopifyResult.shopifyOrderNumber });
+    } catch (err) {
+      store.markOrderPushFailed(order.id, { error: err.message, pushedBy: currentUser });
+      results.push({ id, billNo: order.billNo, success: false, error: err.message });
+    }
+  }
+
+  res.json({
+    success: true,
+    processedCount: results.length,
+    results
+  });
+});
+
+// -------------------------------------------------------------
 // 3. Bill Rows (Orders Table CRUD with Audit & Constraints)
 // -------------------------------------------------------------
 app.get('/api/bills', (req, res) => {
@@ -314,7 +557,11 @@ app.get('/api/bills', (req, res) => {
 
   list = store.filterByDateRange(list, 'createdAt', startDate, endDate);
 
-  if (vendorId) list = list.filter(r => r.vendorId === vendorId);
+  const effectiveVendorId = (currentUser && currentUser.role === 'vendor' && currentUser.vendorId) 
+    ? currentUser.vendorId 
+    : vendorId;
+
+  if (effectiveVendorId) list = list.filter(r => r.vendorId === effectiveVendorId);
   if (paymentMode) list = list.filter(r => r.paymentMode.toLowerCase() === paymentMode.toLowerCase());
   if (source) list = list.filter(r => r.source.toLowerCase() === source.toLowerCase());
   if (status) list = list.filter(r => r.status.toLowerCase() === status.toLowerCase());
@@ -334,7 +581,7 @@ app.get('/api/bills', (req, res) => {
   const activeRole = (currentUser && currentUser.role) || 'super_admin';
   const maskedBills = list.map(b => {
     let maskedMobile = b.mobile || 'N/A';
-    if (activeRole === 'viewer' || activeRole === 'billing_staff') {
+    if (activeRole === 'viewer' || activeRole === 'billing_staff' || activeRole === 'vendor') {
       if (maskedMobile.length >= 4) {
         maskedMobile = 'XXXXXX' + maskedMobile.slice(-4);
       }
@@ -559,43 +806,77 @@ app.post('/api/returns', (req, res) => {
 });
 
 // -------------------------------------------------------------
-// 5. Payouts Management (Section 6.6)
+// 5. Payouts Management (Section 6.6 & Order-Linked Settlements)
 // -------------------------------------------------------------
+app.get('/api/vendors/:id/unpaid-orders', (req, res) => {
+  try {
+    const { id } = req.params;
+    if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId && currentUser.vendorId !== id) {
+      return res.status(403).json({ error: 'Access denied: You can only view your own vendor orders.' });
+    }
+    const orders = store.getUnpaidOrdersForVendor(id);
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/payouts', (req, res) => {
   if (currentUser.role !== 'finance' && currentUser.role !== 'super_admin') {
     return res.status(403).json({ error: 'Only Finance or Super Admin can record payouts.' });
   }
 
-  const { vendorId, amount, mode, reference } = req.body;
-  if (!vendorId || !amount) {
-    return res.status(400).json({ error: 'Vendor and amount are required.' });
+  const { vendorId, amount, mode, reference, notes, allocations, date } = req.body;
+  if (!vendorId || (!amount && (!allocations || allocations.length === 0))) {
+    return res.status(400).json({ error: 'Vendor and amount/allocations are required.' });
   }
 
-  const newPayout = {
-    id: 'pay_' + Date.now(),
-    vendorId,
-    amount: parseFloat(amount),
-    mode: mode || 'Bank Transfer',
-    reference: reference || 'UTR-' + Date.now().toString().slice(-8),
-    date: new Date().toISOString(),
-    paidBy: currentUser.name
-  };
+  try {
+    // If allocations are provided, use order-linked payout recording
+    if (Array.isArray(allocations) && allocations.length > 0) {
+      const payout = store.recordOrderPayout({
+        vendorId,
+        allocations,
+        amount: parseFloat(amount),
+        paymentMode: mode,
+        referenceUtr: reference,
+        notes,
+        adminUser: currentUser,
+        date
+      });
+      return res.status(201).json({ success: true, payout });
+    }
 
-  store.data.payouts.unshift(newPayout);
+    // Fallback: general vendor payout without order linking (for legacy backward compatibility)
+    const newPayout = {
+      id: 'pay_' + Date.now(),
+      vendorId,
+      amount: parseFloat(amount),
+      mode: mode || 'Bank Transfer',
+      reference: reference || 'UTR-' + Date.now().toString().slice(-8),
+      notes: notes || '',
+      date: date || new Date().toISOString(),
+      paidBy: currentUser.name
+    };
 
-  store.logAudit(
-    currentUser.name,
-    'RECORD_PAYOUT',
-    'payout',
-    newPayout.id,
-    'amount',
-    null,
-    `₹${newPayout.amount} via ${newPayout.mode} (Ref: ${newPayout.reference})`,
-    `Payout recorded for vendor ${vendorId}`
-  );
-  store.save();
+    store.data.payouts.unshift(newPayout);
+    store.logAudit(
+      currentUser.name,
+      'RECORD_PAYOUT',
+      'payout',
+      newPayout.id,
+      'amount',
+      null,
+      `₹${newPayout.amount} via ${newPayout.mode} (Ref: ${newPayout.reference})`,
+      `Lumpsum payout recorded for vendor ${vendorId}`
+    );
+    store.save();
 
-  res.json({ success: true, payout: newPayout });
+    res.json({ success: true, payout: newPayout });
+  } catch (err) {
+    console.error('[Payout Error]:', err.message);
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
 // -------------------------------------------------------------

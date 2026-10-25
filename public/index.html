@@ -113,16 +113,32 @@
       <button class="btn btn-xs btn-outline" id="drawerAuthBtn" style="margin-left: auto;" onclick="handleUserAuthClick(); toggleMobileDrawer(false);">Sign In</button>
     </div>
 
-    <!-- Drawer Navigation Links (Simplified to 2 Primary Dashboards) -->
+    <!-- Drawer Navigation Links -->
     <div class="drawer-nav-section">
-      <div class="drawer-nav-title">PRIMARY DASHBOARDS</div>
+      <div class="drawer-nav-title">ADMINISTRATIVE SECTIONS</div>
       <button class="drawer-nav-item active" id="mDrawerOverall"
         onclick="switchMainTab('overall'); toggleMobileDrawer(false);">
-        <span class="d-icon">📊</span> Overall Settlement Dashboard
+        <span class="d-icon">📊</span> Overall Settlement
       </button>
       <button class="drawer-nav-item" id="mDrawerVendors"
         onclick="switchMainTab('vendors'); toggleMobileDrawer(false);">
         <span class="d-icon">🏢</span> Vendor-wise Dashboard
+      </button>
+      <button class="drawer-nav-item" id="mDrawerOrders"
+        onclick="switchMainTab('orders'); toggleMobileDrawer(false);">
+        <span class="d-icon">📦</span> Orders Management
+      </button>
+      <button class="drawer-nav-item" id="mDrawerVendorMgmt"
+        onclick="switchMainTab('vendor_mgmt'); toggleMobileDrawer(false);">
+        <span class="d-icon">🏬</span> Vendor Management
+      </button>
+      <button class="drawer-nav-item" id="mDrawerPayouts"
+        onclick="switchMainTab('payout_mgmt'); toggleMobileDrawer(false);">
+        <span class="d-icon">💸</span> Payout Management
+      </button>
+      <button class="drawer-nav-item" id="mDrawerAudit"
+        onclick="switchMainTab('audit'); toggleMobileDrawer(false);">
+        <span class="d-icon">📜</span> Audit Log
       </button>
     </div>
 
@@ -144,8 +160,16 @@
     </div>
   </aside>
 
-  <!-- Date Range Filter Toolbar (Simplified to Yesterday, Today, Custom per Krishna Bug 2) -->
+  <!-- Date Range & Vendor Filter Toolbar (Krishna Requirement 5) -->
   <div class="date-range-toolbar">
+    <!-- Vendor Selector Alongside Date Range Filter -->
+    <div class="vendor-selector-group" id="globalVendorSelectorWrap" style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-weight: 600; font-size: 0.82rem; color: var(--notion-secondary); white-space: nowrap;">🏪 Vendor:</span>
+      <select id="globalVendorSelector" class="form-input" style="padding: 4px 10px; font-size: 0.82rem; height: 32px; border-radius: var(--radius-sm); border: 1px solid var(--notion-hairline); max-width: 200px; background: #fff;" onchange="handleGlobalVendorChange(this.value)">
+        <option value="all">All Vendors (Consolidated)</option>
+      </select>
+    </div>
+
     <div class="date-presets-group">
       <span class="date-preset-label">📅 Range:</span>
       <button class="date-preset-btn" id="presetYesterday" onclick="setDatePreset('yesterday')">Yesterday</button>
@@ -167,14 +191,26 @@
     </div>
   </div>
 
-  <!-- Desktop Navigation Tabs (Exactly 2 Primary Dashboards) -->
+  <!-- Desktop Navigation Tabs (6 Administrative Sections per Krishna Section 7) -->
   <nav class="app-nav desktop-nav">
     <div class="nav-container">
       <button class="nav-tab active" id="tabOverall" onclick="switchMainTab('overall')">
-        📊 Overall Settlement Dashboard
+        📊 Overall Settlement
       </button>
       <button class="nav-tab" id="tabVendors" onclick="switchMainTab('vendors')">
-        🏢 Vendor-wise Dashboard
+        🏢 Vendor-wise
+      </button>
+      <button class="nav-tab" id="tabOrders" onclick="switchMainTab('orders')">
+        📦 Orders Management
+      </button>
+      <button class="nav-tab" id="tabVendorMgmt" onclick="switchMainTab('vendor_mgmt')">
+        🏬 Vendor Management
+      </button>
+      <button class="nav-tab" id="tabPayouts" onclick="switchMainTab('payout_mgmt')">
+        💸 Payout Management
+      </button>
+      <button class="nav-tab" id="tabAudit" onclick="switchMainTab('audit')">
+        📜 Audit Log
       </button>
     </div>
   </nav>

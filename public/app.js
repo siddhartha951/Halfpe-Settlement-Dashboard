@@ -160,8 +160,31 @@ async function init() {
   window.clearVendorFilters = clearVendorFilters;
   window.renderLoginPage = renderLoginPage;
   window.handleLoginPageSubmit = handleLoginPageSubmit;
-  window.togglePagePasswordVisibility = togglePagePasswordVisibility;
   window.autofillLogin = autofillLogin;
+  window.handleGlobalVendorChange = handleGlobalVendorChange;
+  window.renderOrdersManagementView = renderOrdersManagementView;
+  window.handleOrderSearch = handleOrderSearch;
+  window.setOrderShopifyFilter = setOrderShopifyFilter;
+  window.toggleSelectOrder = toggleSelectOrder;
+  window.toggleSelectAllOrders = toggleSelectAllOrders;
+  window.pushSingleOrderToShopify = pushSingleOrderToShopify;
+  window.bulkPushApprovedOrders = bulkPushApprovedOrders;
+  window.openViewOrderModal = openViewOrderModal;
+  window.openEditOrderModal = openEditOrderModal;
+  window.submitEditOrder = submitEditOrder;
+  window.renderVendorManagementView = renderVendorManagementView;
+  window.openAddVendorModal = openAddVendorModal;
+  window.submitAddVendor = submitAddVendor;
+  window.openEditVendorModal = openEditVendorModal;
+  window.submitEditVendor = submitEditVendor;
+  window.toggleVendorActiveStatus = toggleVendorActiveStatus;
+  window.renderPayoutManagementView = renderPayoutManagementView;
+  window.openOrderPayoutModal = openOrderPayoutModal;
+  window.handlePayoutVendorSelect = handlePayoutVendorSelect;
+  window.quickFillAllocation = quickFillAllocation;
+  window.recalculatePayoutAllocations = recalculatePayoutAllocations;
+  window.submitOrderPayout = submitOrderPayout;
+  window.renderAuditLogView = renderAuditLogView;
 }
 
 function updateUserChipUI() {
@@ -669,9 +692,27 @@ function switchMainTab(tab) {
   state.activeTab = tab;
   state.selectedVendorId = null;
 
-  // 1. Sync Desktop tabs (Simplified to 2 Primary Dashboards)
+  const tabIdMap = {
+    overall: 'tabOverall',
+    vendors: 'tabVendors',
+    orders: 'tabOrders',
+    vendor_mgmt: 'tabVendorMgmt',
+    payout_mgmt: 'tabPayouts',
+    audit: 'tabAudit'
+  };
+
+  const drawerIdMap = {
+    overall: 'mDrawerOverall',
+    vendors: 'mDrawerVendors',
+    orders: 'mDrawerOrders',
+    vendor_mgmt: 'mDrawerVendorMgmt',
+    payout_mgmt: 'mDrawerPayouts',
+    audit: 'mDrawerAudit'
+  };
+
+  // 1. Sync Desktop tabs
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  const activeBtn = document.getElementById(tab === 'overall' ? 'tabOverall' : 'tabVendors');
+  const activeBtn = document.getElementById(tabIdMap[tab] || 'tabOverall');
   if (activeBtn) activeBtn.classList.add('active');
 
   // 2. Sync Mobile Bottom Nav
@@ -681,7 +722,7 @@ function switchMainTab(tab) {
 
   // 3. Sync Mobile Drawer items
   document.querySelectorAll('.drawer-nav-item').forEach(d => d.classList.remove('active'));
-  const drawerBtn = document.getElementById(tab === 'overall' ? 'mDrawerOverall' : 'mDrawerVendors');
+  const drawerBtn = document.getElementById(drawerIdMap[tab] || 'mDrawerOverall');
   if (drawerBtn) drawerBtn.classList.add('active');
 
   // 4. GSAP transition on page content
@@ -703,6 +744,18 @@ function updateNavigationVisibility() {
   if (dateToolbar) dateToolbar.style.display = isAuth ? '' : 'none';
   if (mobileBottomNav) mobileBottomNav.style.display = isAuth ? '' : 'none';
   if (syncBtn) syncBtn.style.display = isAuth ? '' : 'none';
+
+  // Vendor role restrictions: vendor users should only see their own vendor portal
+  if (isAuth && state.currentUser.role === 'vendor') {
+    const tabOverall = document.getElementById('tabOverall');
+    const tabVendorMgmt = document.getElementById('tabVendorMgmt');
+    const tabOrders = document.getElementById('tabOrders');
+    const tabPayouts = document.getElementById('tabPayouts');
+    const tabAudit = document.getElementById('tabAudit');
+    if (tabOverall) tabOverall.style.display = 'none';
+    if (tabVendorMgmt) tabVendorMgmt.style.display = 'none';
+    if (tabAudit) tabAudit.style.display = 'none';
+  }
 }
 
 function renderMain() {
@@ -713,10 +766,25 @@ function renderMain() {
     return;
   }
 
+  // If vendor role, automatically lock to their vendor ID
+  if (state.currentUser.role === 'vendor' && state.currentUser.vendorId && !state.selectedVendorId) {
+    state.selectedVendorId = state.currentUser.vendorId;
+  }
+
   if (state.selectedVendorId) {
     renderVendorDetailView();
   } else if (state.activeTab === 'overall') {
     renderOverallSettlementView();
+  } else if (state.activeTab === 'vendors') {
+    renderVendorsListView();
+  } else if (state.activeTab === 'orders') {
+    renderOrdersManagementView();
+  } else if (state.activeTab === 'vendor_mgmt') {
+    renderVendorManagementView();
+  } else if (state.activeTab === 'payout_mgmt') {
+    renderPayoutManagementView();
+  } else if (state.activeTab === 'audit') {
+    renderAuditLogView();
   } else {
     renderVendorsListView();
   }
@@ -1019,10 +1087,39 @@ async function loadVendorsSummary() {
 
     const res = await fetch(url);
     state.vendorsData = await res.json();
+    populateGlobalVendorDropdown();
     renderMain();
   } catch (err) {
     toast('Failed to load vendors data', 'error');
   }
+}
+
+function populateGlobalVendorDropdown() {
+  const sel = document.getElementById('globalVendorSelector');
+  if (!sel || !state.vendorsData || !state.vendorsData.vendors) return;
+
+  const currentVal = state.selectedGlobalVendor || (state.selectedVendorId || 'all');
+  const options = ['<option value="all">All Vendors (Consolidated)</option>'];
+
+  const sorted = [...state.vendorsData.vendors].sort(compareStallNumbers);
+  sorted.forEach(vObj => {
+    const v = vObj.vendor || vObj;
+    options.push(`<option value="${v.id}" ${v.id === currentVal ? 'selected' : ''}>${v.stallNo}: ${v.name}</option>`);
+  });
+
+  sel.innerHTML = options.join('');
+}
+
+function handleGlobalVendorChange(vendorId) {
+  state.selectedGlobalVendor = vendorId;
+  if (vendorId === 'all') {
+    state.selectedVendorId = null;
+    toast('Switched to All Vendors (Consolidated View)', 'info');
+  } else {
+    state.selectedVendorId = vendorId;
+    toast(`Filtered for vendor: ${vendorId}`, 'info');
+  }
+  refreshDashboard();
 }
 
 // -------------------------------------------------------------
@@ -2851,6 +2948,1335 @@ function openPrintableStatement(vendorId) {
   `);
   printWindow.document.close();
 }
+
+// =============================================================
+// KRISHNA PILLAR 2: ORDERS MANAGEMENT & SHOPIFY PUSH ENGINE
+// =============================================================
+
+let ordersManagementState = {
+  search: '',
+  statusFilter: 'all',
+  shopifyFilter: 'all',
+  selectedOrderIds: new Set(),
+  ordersList: []
+};
+
+async function renderOrdersManagementView() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+
+  main.innerHTML = `
+    <div class="view-header" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
+          📦 Orders Management
+          <span class="badge badge-blue" style="font-size: 0.75rem; vertical-align: middle;">Pre-Shopify Staging</span>
+        </h1>
+        <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
+          Review internally recorded customer orders, verify details, and push approved orders to Shopify.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <button class="btn btn-outline btn-sm" onclick="renderOrdersManagementView()">
+          🔄 Refresh Orders
+        </button>
+        ${getUserRole() === 'super_admin' ? `
+          <button class="btn btn-primary btn-sm" onclick="bulkPushApprovedOrders()">
+            🚀 Bulk Push Approved to Shopify
+          </button>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- Orders Filter Bar -->
+    <div class="card" style="padding: 16px; margin-bottom: 20px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline);">
+      <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+        <div style="display: flex; gap: 10px; flex-grow: 1; max-width: 400px;">
+          <input type="text" id="orderSearchInput" class="form-input" placeholder="🔍 Search by Bill #, Customer Name, Phone, Stall..." 
+            value="${escapeHtml(ordersManagementState.search)}" oninput="handleOrderSearch(this.value)" style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <span style="font-size: 0.82rem; font-weight: 600; color: var(--notion-secondary);">Shopify Sync:</span>
+          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('all')">All</button>
+          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'NOT_PUSHED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('NOT_PUSHED')">⏳ Awaiting Push</button>
+          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'PUSHED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('PUSHED')">✓ Pushed to Shopify</button>
+          <button class="btn btn-xs ${ordersManagementState.shopifyFilter === 'FAILED' ? 'btn-primary' : 'btn-outline'}" onclick="setOrderShopifyFilter('FAILED')">✕ Push Failed</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Orders Table Container -->
+    <div id="ordersTableContainer">
+      <div style="text-align: center; padding: 40px; color: var(--notion-secondary);">
+        ⏳ Loading internal orders...
+      </div>
+    </div>
+  `;
+
+  await loadAndRenderOrdersTable();
+}
+
+async function loadAndRenderOrdersTable() {
+  const container = document.getElementById('ordersTableContainer');
+  if (!container) return;
+
+  try {
+    const params = new URLSearchParams();
+    if (state.startDate) params.append('startDate', state.startDate);
+    if (state.endDate) params.append('endDate', state.endDate);
+    if (ordersManagementState.search) params.append('search', ordersManagementState.search);
+    if (ordersManagementState.shopifyFilter !== 'all') params.append('shopifySyncStatus', ordersManagementState.shopifyFilter);
+    if (state.selectedGlobalVendor && state.selectedGlobalVendor !== 'all') params.append('vendorId', state.selectedGlobalVendor);
+
+    const res = await fetch(`/api/orders?${params.toString()}`);
+    const orders = await res.json();
+    ordersManagementState.ordersList = orders;
+
+    if (!Array.isArray(orders) || orders.length === 0) {
+      container.innerHTML = `
+        <div class="card" style="padding: 48px; text-align: center; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline);">
+          <div style="font-size: 2.2rem; margin-bottom: 12px;">📦</div>
+          <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--notion-ink);">No Internal Orders Found</h3>
+          <p style="color: var(--notion-secondary); font-size: 0.88rem; max-width: 440px; margin: 8px auto 0;">
+            Orders recorded through the payment page will appear here for Super Admin approval before being pushed to Shopify.
+          </p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="table-card" style="background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); overflow: hidden; box-shadow: var(--shadow-soft);">
+        <div style="padding: 12px 18px; background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; color: var(--notion-secondary);">
+          <span>Showing <strong>${orders.length}</strong> recorded orders</span>
+          ${getUserRole() === 'super_admin' ? `
+            <span style="font-size: 0.8rem;">💡 Only Super Admin can approve and push orders to Shopify</span>
+          ` : ''}
+        </div>
+        <div style="overflow-x: auto;">
+          <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+            <thead>
+              <tr style="background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+                <th style="padding: 10px 14px; width: 36px;">
+                  <input type="checkbox" onchange="toggleSelectAllOrders(this.checked)" title="Select all unpushed">
+                </th>
+                <th style="padding: 10px 14px;">Bill # / Ref</th>
+                <th style="padding: 10px 14px;">Customer</th>
+                <th style="padding: 10px 14px;">Stall & Vendor</th>
+                <th style="padding: 10px 14px; text-align: right;">Gross Sale</th>
+                <th style="padding: 10px 14px; text-align: right;">Net Payable</th>
+                <th style="padding: 10px 14px;">Payment</th>
+                <th style="padding: 10px 14px;">Shopify Status</th>
+                <th style="padding: 10px 14px;">Approval</th>
+                <th style="padding: 10px 14px; text-align: right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orders.map(o => {
+                const isPushed = o.shopifySyncStatus === 'PUSHED';
+                const isFailed = o.shopifySyncStatus === 'FAILED';
+                const gross = o.totals?.grossAmount || o.totalPayable || 0;
+                const net = o.totalPayable || gross;
+                return `
+                  <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); transition: background 0.15s;" onmouseover="this.style.background='#faf9f8'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 12px 14px;">
+                      <input type="checkbox" ${isPushed ? 'disabled' : ''} value="${o.id}" 
+                        ${ordersManagementState.selectedOrderIds.has(o.id) ? 'checked' : ''}
+                        onchange="toggleSelectOrder('${o.id}', this.checked)">
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      <strong style="color: var(--notion-ink);">${escapeHtml(o.billNo || o.id)}</strong>
+                      <div style="font-size: 0.72rem; color: var(--notion-muted);">${formatDate(o.createdAt)}</div>
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      <div style="font-weight: 500;">${escapeHtml(o.customer?.name || 'Walk-in')}</div>
+                      <div style="font-size: 0.75rem; color: var(--notion-secondary);">${escapeHtml(o.customer?.phone || '-')}</div>
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      <span class="badge" style="background: #eef2f6; font-size: 0.72rem; font-weight: 600;">${escapeHtml(o.stallNo || 'Stall TBD')}</span>
+                      <div style="font-size: 0.8rem; color: var(--notion-ink); margin-top: 2px;">${escapeHtml(o.vendorName || 'Unassigned')}</div>
+                    </td>
+                    <td style="padding: 12px 14px; text-align: right; font-weight: 600;">
+                      ₹${Number(gross).toLocaleString('en-IN')}
+                    </td>
+                    <td style="padding: 12px 14px; text-align: right; font-weight: 600; color: #0075DE;">
+                      ₹${Number(net).toLocaleString('en-IN')}
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      <div style="font-size: 0.78rem; font-weight: 500;">${escapeHtml(o.payment?.method || 'Prepaid')}</div>
+                      <div style="font-size: 0.7rem; color: var(--notion-muted); font-family: var(--font-mono);">${escapeHtml(o.payment?.paymentId ? String(o.payment.paymentId).slice(-10) : '-')}</div>
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      ${isPushed ? `
+                        <span class="badge" style="background: #d4edda; color: #155724; font-size: 0.75rem; font-weight: 600;">
+                          ✓ Shopify #${escapeHtml(String(o.shopifyOrderNumber || o.shopifyOrderId))}
+                        </span>
+                      ` : isFailed ? `
+                        <span class="badge" style="background: #f8d7da; color: #721c24; font-size: 0.75rem; font-weight: 600;" title="${escapeHtml(o.shopifyError || 'Error')}">
+                          ✕ Push Failed
+                        </span>
+                      ` : `
+                        <span class="badge" style="background: #fff3cd; color: #856404; font-size: 0.75rem; font-weight: 600;">
+                          ⏳ Awaiting Push
+                        </span>
+                      `}
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      <span class="badge" style="font-size: 0.72rem; ${o.status === 'APPROVED' ? 'background: #e8f4fd; color: #0075DE;' : 'background: #f0f0f0; color: #555;'}">
+                        ${escapeHtml(o.status || 'PENDING')}
+                      </span>
+                    </td>
+                    <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
+                      <div style="display: inline-flex; gap: 6px;">
+                        <button class="btn btn-outline btn-xs" onclick="openViewOrderModal('${o.id}')" title="Inspect Order Details">
+                          👁️ View
+                        </button>
+                        ${getUserRole() === 'super_admin' ? `
+                          <button class="btn btn-outline btn-xs" onclick="openEditOrderModal('${o.id}')" title="Edit Stall / Vendor / Customer">
+                            ✏️ Edit
+                          </button>
+                          ${!isPushed ? `
+                            <button class="btn btn-primary btn-xs" id="pushBtn_${o.id}" onclick="pushSingleOrderToShopify('${o.id}')">
+                              🚀 Push to Shopify
+                            </button>
+                          ` : ''}
+                        ` : ''}
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<div class="card" style="padding: 24px; color: red;">Error loading orders: ${err.message}</div>`;
+  }
+}
+
+function handleOrderSearch(val) {
+  ordersManagementState.search = val.trim();
+  loadAndRenderOrdersTable();
+}
+
+function setOrderShopifyFilter(status) {
+  ordersManagementState.shopifyFilter = status;
+  renderOrdersManagementView();
+}
+
+function toggleSelectOrder(id, checked) {
+  if (checked) ordersManagementState.selectedOrderIds.add(id);
+  else ordersManagementState.selectedOrderIds.delete(id);
+}
+
+function toggleSelectAllOrders(checked) {
+  const checkboxes = document.querySelectorAll('#ordersTableContainer tbody input[type="checkbox"]:not([disabled])');
+  checkboxes.forEach(cb => {
+    cb.checked = checked;
+    if (checked) ordersManagementState.selectedOrderIds.add(cb.value);
+    else ordersManagementState.selectedOrderIds.delete(cb.value);
+  });
+}
+
+// Push Single Order to Shopify (Super Admin Only)
+async function pushSingleOrderToShopify(orderId) {
+  if (getUserRole() !== 'super_admin') {
+    toast('Access Denied: Only Super Admin can push orders to Shopify.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById(`pushBtn_${orderId}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Pushing...';
+  }
+
+  toast('Creating Shopify Order with Webkul stall tagging...', 'info');
+
+  try {
+    const res = await fetch(`/api/orders/${orderId}/push-to-shopify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      toast(`✓ Shopify Order #${data.shopifyOrderNumber} created successfully!`, 'success');
+      await loadAndRenderOrdersTable();
+    } else {
+      toast(`Push rejected: ${data.error || 'Shopify API error'}`, 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Retry Push';
+      }
+    }
+  } catch (err) {
+    toast(`Network failure during Shopify push: ${err.message}`, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Retry Push';
+    }
+  }
+}
+
+// Bulk Push to Shopify
+async function bulkPushApprovedOrders() {
+  if (getUserRole() !== 'super_admin') {
+    toast('Access Denied: Only Super Admin can execute bulk push.', 'error');
+    return;
+  }
+
+  const ids = Array.from(ordersManagementState.selectedOrderIds);
+  if (ids.length === 0) {
+    toast('Please select at least one unpushed order to push to Shopify.', 'error');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to push ${ids.length} orders to Shopify? This action is create-only.`)) {
+    return;
+  }
+
+  toast(`Pushing ${ids.length} orders to Shopify...`, 'info');
+
+  try {
+    const res = await fetch('/api/orders/bulk-push-to-shopify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderIds: ids })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      const successCount = data.results.filter(r => r.success).length;
+      toast(`✓ Successfully created ${successCount} of ${ids.length} orders in Shopify!`, 'success');
+      ordersManagementState.selectedOrderIds.clear();
+      await loadAndRenderOrdersTable();
+    } else {
+      toast(`Bulk push failed: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast(`Bulk push error: ${err.message}`, 'error');
+  }
+}
+
+// Order View Modal
+async function openViewOrderModal(orderId) {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  try {
+    const res = await fetch(`/api/orders/${orderId}`);
+    const order = await res.json();
+
+    container.innerHTML = `
+      <div class="login-modal-box" style="max-width: 600px;">
+        <div class="login-modal-header">
+          <div>
+            <h3 class="login-modal-title">📦 Order #${escapeHtml(order.billNo)}</h3>
+            <p class="login-modal-sub">Internal HalfPe Record Details</p>
+          </div>
+          <button class="modal-close-btn" onclick="closeModal()">×</button>
+        </div>
+        <div class="login-modal-body" style="padding: 24px; max-height: 70vh; overflow-y: auto;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px;">
+            <div style="background: var(--notion-surface-warm); padding: 12px; border-radius: var(--radius-sm);">
+              <span style="font-size: 0.75rem; color: var(--notion-secondary);">Customer:</span>
+              <div style="font-weight: 600; font-size: 0.92rem;">${escapeHtml(order.customer?.name || 'Walk-in')}</div>
+              <div style="font-size: 0.8rem; color: var(--notion-secondary);">${escapeHtml(order.customer?.phone || '-')}</div>
+            </div>
+            <div style="background: var(--notion-surface-warm); padding: 12px; border-radius: var(--radius-sm);">
+              <span style="font-size: 0.75rem; color: var(--notion-secondary);">Vendor Allocation:</span>
+              <div style="font-weight: 600; font-size: 0.92rem;">${escapeHtml(order.vendorName || '-')}</div>
+              <div style="font-size: 0.8rem; color: var(--notion-secondary);">${escapeHtml(order.stallNo || '-')}</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 20px;">
+            <h4 style="font-size: 0.85rem; font-weight: 700; margin-bottom: 8px;">Order Items</h4>
+            <div style="border: 1px solid var(--notion-hairline); border-radius: var(--radius-sm); overflow: hidden;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+                <thead>
+                  <tr style="background: var(--notion-surface-warm); text-align: left;">
+                    <th style="padding: 8px 12px;">Item</th>
+                    <th style="padding: 8px 12px; text-align: center;">Qty</th>
+                    <th style="padding: 8px 12px; text-align: right;">Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(order.items && order.items.length > 0) ? order.items.map(it => `
+                    <tr style="border-top: 1px solid var(--notion-hairline);">
+                      <td style="padding: 8px 12px;">${escapeHtml(it.title || it.name || 'Expo Item')}</td>
+                      <td style="padding: 8px 12px; text-align: center;">${it.quantity || it.qty || 1}</td>
+                      <td style="padding: 8px 12px; text-align: right;">₹${Number(it.eventPrice || it.price || 0).toLocaleString('en-IN')}</td>
+                    </tr>
+                  `).join('') : `
+                    <tr><td colspan="3" style="padding: 12px; text-align: center; color: var(--notion-secondary);">Single Expo item sale</td></tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="background: #fdfdfd; border: 1px solid var(--notion-hairline); padding: 14px; border-radius: var(--radius-sm); margin-bottom: 20px; font-size: 0.85rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span>Gross Sale:</span>
+              <strong>₹${Number(order.totals?.grossAmount || order.totalPayable || 0).toLocaleString('en-IN')}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span>Vendor Commission (${order.commissionPct || 15}%):</span>
+              <span style="color: #666;">-₹${Number(order.totals?.commissionAmount || 0).toLocaleString('en-IN')}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-weight: 700; border-top: 1px solid var(--notion-hairline); padding-top: 6px; color: #0075DE;">
+              <span>Net Payable to Vendor:</span>
+              <span>₹${Number(order.totalPayable || 0).toLocaleString('en-IN')}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.8rem;">
+              <span>Payout Status:</span>
+              <span class="badge ${order.payoutStatus === 'FULLY_PAID' ? 'badge-green' : (order.amountPaid > 0 ? 'badge-amber' : 'badge-outline')}">
+                ${order.payoutStatus || 'UNPAID'} (Paid: ₹${order.amountPaid || 0} / Bal: ₹${order.outstandingBalance || order.totalPayable || 0})
+              </span>
+            </div>
+          </div>
+
+          <div style="background: var(--notion-surface-warm); padding: 12px; border-radius: var(--radius-sm); font-size: 0.8rem;">
+            <div><strong>Shopify Sync:</strong> ${order.shopifySyncStatus || 'NOT_PUSHED'}</div>
+            ${order.shopifyOrderId ? `<div style="margin-top: 4px;"><strong>Shopify Order ID:</strong> ${order.shopifyOrderId} (#${order.shopifyOrderNumber || ''})</div>` : ''}
+            ${order.pushedBy ? `<div style="margin-top: 4px;"><strong>Pushed By:</strong> ${order.pushedBy} on ${formatDate(order.pushedAt)}</div>` : ''}
+            ${order.shopifyError ? `<div style="margin-top: 4px; color: red;"><strong>Push Error:</strong> ${escapeHtml(order.shopifyError)}</div>` : ''}
+          </div>
+        </div>
+        <div class="login-modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--notion-hairline); display: flex; justify-content: flex-end;">
+          <button class="btn btn-outline btn-sm" onclick="closeModal()">Close</button>
+        </div>
+      </div>
+    `;
+    container.classList.remove('hidden');
+  } catch (e) {
+    toast('Failed to load order: ' + e.message, 'error');
+  }
+}
+
+// Edit Order Modal (Super Admin Only)
+async function openEditOrderModal(orderId) {
+  if (getUserRole() !== 'super_admin') {
+    toast('Only Super Admin can edit internal order records.', 'error');
+    return;
+  }
+
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  try {
+    const res = await fetch(`/api/orders/${orderId}`);
+    const order = await res.json();
+    const vendors = (state.vendorsData && state.vendorsData.vendors) ? state.vendorsData.vendors : [];
+
+    container.innerHTML = `
+      <div class="login-modal-box" style="max-width: 540px;">
+        <div class="login-modal-header">
+          <div>
+            <h3 class="login-modal-title">✏️ Edit Order #${escapeHtml(order.billNo)}</h3>
+            <p class="login-modal-sub">Correct details before pushing to Shopify</p>
+          </div>
+          <button class="modal-close-btn" onclick="closeModal()">×</button>
+        </div>
+        <form id="editOrderForm" onsubmit="submitEditOrder(event, '${order.id}')" style="padding: 24px;">
+          <div style="margin-bottom: 16px;">
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Assign Vendor / Stall:</label>
+            <select id="editOrderVendorId" class="form-input" style="width: 100%; height: 38px;">
+              ${vendors.map(vObj => {
+                const v = vObj.vendor || vObj;
+                return `<option value="${v.id}" ${v.id === order.vendorId ? 'selected' : ''}>${v.stallNo}: ${v.name}</option>`;
+              }).join('')}
+            </select>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+            <div>
+              <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Customer Name:</label>
+              <input type="text" id="editOrderCustName" class="form-input" value="${escapeHtml(order.customer?.name || '')}" style="width: 100%; height: 36px;" required>
+            </div>
+            <div>
+              <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Customer Phone:</label>
+              <input type="text" id="editOrderCustPhone" class="form-input" value="${escapeHtml(order.customer?.phone || '')}" style="width: 100%; height: 36px;">
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Approval Status:</label>
+            <select id="editOrderStatus" class="form-input" style="width: 100%; height: 36px;">
+              <option value="PENDING_APPROVAL" ${order.status === 'PENDING_APPROVAL' ? 'selected' : ''}>Pending Approval</option>
+              <option value="APPROVED" ${order.status === 'APPROVED' ? 'selected' : ''}>Approved (Ready for Shopify Push)</option>
+              <option value="REJECTED" ${order.status === 'REJECTED' ? 'selected' : ''}>Rejected / Void</option>
+            </select>
+          </div>
+
+          <div style="background: #fff8e6; padding: 10px 14px; border-radius: var(--radius-sm); border: 1px solid #ffd591; font-size: 0.78rem; color: #873800; margin-bottom: 20px;">
+            ⚠️ Changes will be recorded in the audit log. Once pushed to Shopify, the order is locked against overwrite.
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    `;
+    container.classList.remove('hidden');
+  } catch (err) {
+    toast('Failed to open edit modal: ' + err.message, 'error');
+  }
+}
+
+async function submitEditOrder(e, orderId) {
+  e.preventDefault();
+  const vendorId = document.getElementById('editOrderVendorId').value;
+  const customerName = document.getElementById('editOrderCustName').value;
+  const customerPhone = document.getElementById('editOrderCustPhone').value;
+  const status = document.getElementById('editOrderStatus').value;
+
+  try {
+    const res = await fetch(`/api/orders/${orderId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vendorId,
+        customer: { name: customerName, phone: customerPhone },
+        status
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('✓ Order details updated successfully!', 'success');
+      closeModal();
+      await loadAndRenderOrdersTable();
+    } else {
+      toast(`Update failed: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  }
+}
+
+
+// =============================================================
+// KRISHNA PILLAR 4: SUPER ADMIN VENDOR MANAGEMENT (CRUD)
+// =============================================================
+
+async function renderVendorManagementView() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+
+  main.innerHTML = `
+    <div class="view-header" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
+          🏬 Vendor Management
+          <span class="badge badge-purple" style="font-size: 0.75rem; vertical-align: middle;">Directory Master</span>
+        </h1>
+        <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
+          Add official vendors, assign or change stall numbers, and manage vendor active status without deleting historical records.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center;">
+        ${getUserRole() === 'super_admin' ? `
+          <button class="btn btn-primary btn-sm" onclick="openAddVendorModal()">
+            ➕ Add New Vendor
+          </button>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- Vendor Registry Table -->
+    <div id="vendorMgmtTableContainer">
+      <div style="text-align: center; padding: 40px; color: var(--notion-secondary);">
+        ⏳ Loading vendor directory...
+      </div>
+    </div>
+  `;
+
+  await loadAndRenderVendorMgmtTable();
+}
+
+async function loadAndRenderVendorMgmtTable() {
+  const container = document.getElementById('vendorMgmtTableContainer');
+  if (!container) return;
+
+  try {
+    const res = await fetch('/api/vendors?includeInactive=true');
+    const data = await res.json();
+    const vendors = (data && data.vendors) ? data.vendors : [];
+
+    const sorted = [...vendors].sort(compareStallNumbers);
+
+    container.innerHTML = `
+      <div class="table-card" style="background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); overflow: hidden; box-shadow: var(--shadow-soft);">
+        <div style="padding: 12px 18px; background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; color: var(--notion-secondary);">
+          <span>Total Registered Vendors: <strong>${sorted.length}</strong></span>
+          <span style="font-size: 0.8rem; color: #28a745;">🛡️ Historical records safeguarded (Soft deactivation only)</span>
+        </div>
+        <div style="overflow-x: auto;">
+          <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+            <thead>
+              <tr style="background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+                <th style="padding: 10px 14px;">Stall #</th>
+                <th style="padding: 10px 14px;">Vendor Name</th>
+                <th style="padding: 10px 14px;">Code / Stable ID</th>
+                <th style="padding: 10px 14px;">Category</th>
+                <th style="padding: 10px 14px; text-align: center;">Commission</th>
+                <th style="padding: 10px 14px;">Status</th>
+                <th style="padding: 10px 14px; text-align: right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sorted.map(vObj => {
+                const v = vObj.vendor || vObj;
+                const isActive = v.active !== false;
+                return `
+                  <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); opacity: ${isActive ? '1' : '0.6'};">
+                    <td style="padding: 12px 14px;">
+                      <span class="badge" style="background: #eef2f6; font-size: 0.78rem; font-weight: 600;">${escapeHtml(v.stallNo || 'Stall TBD')}</span>
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      <strong style="color: var(--notion-ink);">${escapeHtml(v.name)}</strong>
+                      ${v.phone ? `<div style="font-size: 0.72rem; color: var(--notion-muted);">📞 ${escapeHtml(v.phone)}</div>` : ''}
+                    </td>
+                    <td style="padding: 12px 14px; font-family: var(--font-mono); font-size: 0.8rem;">
+                      ${escapeHtml(v.id || v.code)}
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      ${escapeHtml(v.category || 'Retail')}
+                    </td>
+                    <td style="padding: 12px 14px; text-align: center;">
+                      <span class="badge" style="background: #e8f4fd; color: #0075DE; font-weight: 600;">${v.commissionPct || 15}%</span>
+                    </td>
+                    <td style="padding: 12px 14px;">
+                      ${isActive ? `
+                        <span class="badge badge-green" style="font-size: 0.72rem;">Active</span>
+                      ` : `
+                        <span class="badge" style="background: #eee; color: #777; font-size: 0.72rem;">Deactivated</span>
+                      `}
+                    </td>
+                    <td style="padding: 12px 14px; text-align: right; white-space: nowrap;">
+                      ${getUserRole() === 'super_admin' ? `
+                        <button class="btn btn-outline btn-xs" onclick="openEditVendorModal('${v.id}')">
+                          ✏️ Edit
+                        </button>
+                        <button class="btn ${isActive ? 'btn-danger-outline' : 'btn-outline'} btn-xs" style="margin-left: 6px;" onclick="toggleVendorActiveStatus('${v.id}', ${!isActive})">
+                          ${isActive ? 'Deactivate' : 'Activate'}
+                        </button>
+                      ` : `
+                        <span style="font-size: 0.75rem; color: var(--notion-muted);">Read-only</span>
+                      `}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<div class="card" style="padding: 24px; color: red;">Error: ${err.message}</div>`;
+  }
+}
+
+function openAddVendorModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="login-modal-box" style="max-width: 500px;">
+      <div class="login-modal-header">
+        <div>
+          <h3 class="login-modal-title">➕ Add New Event Vendor</h3>
+          <p class="login-modal-sub">Create official vendor record in registry</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+      <form id="addVendorForm" onsubmit="submitAddVendor(event)" style="padding: 24px;">
+        <div style="margin-bottom: 14px;">
+          <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Vendor / Brand Name:</label>
+          <input type="text" id="newVendorName" class="form-input" placeholder="e.g. Silk Traditions" style="width: 100%; height: 36px;" required>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+          <div>
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Stall Number:</label>
+            <input type="text" id="newVendorStall" class="form-input" placeholder="e.g. Stall 92" style="width: 100%; height: 36px;" required>
+          </div>
+          <div>
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Short Code:</label>
+            <input type="text" id="newVendorCode" class="form-input" placeholder="e.g. STR" style="width: 100%; height: 36px;" required>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+          <div>
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Category:</label>
+            <input type="text" id="newVendorCategory" class="form-input" placeholder="e.g. Handlooms" style="width: 100%; height: 36px;">
+          </div>
+          <div>
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Commission %:</label>
+            <input type="number" id="newVendorCommission" class="form-input" value="15" step="0.1" style="width: 100%; height: 36px;">
+          </div>
+        </div>
+        <div style="margin-bottom: 18px;">
+          <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Contact Phone / WhatsApp:</label>
+          <input type="text" id="newVendorPhone" class="form-input" placeholder="e.g. 9876543210" style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Add Vendor</button>
+        </div>
+      </form>
+    </div>
+  `;
+  container.classList.remove('hidden');
+}
+
+async function submitAddVendor(e) {
+  e.preventDefault();
+  const name = document.getElementById('newVendorName').value;
+  const stallNo = document.getElementById('newVendorStall').value;
+  const code = document.getElementById('newVendorCode').value;
+  const category = document.getElementById('newVendorCategory').value;
+  const commissionPct = document.getElementById('newVendorCommission').value;
+  const phone = document.getElementById('newVendorPhone').value;
+
+  try {
+    const res = await fetch('/api/vendors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, stallNo, code, category, commissionPct, phone })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Vendor "${data.vendor.name}" registered successfully!`, 'success');
+      closeModal();
+      await loadVendorsSummary();
+      await loadAndRenderVendorMgmtTable();
+    } else {
+      toast(`Failed to add vendor: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function openEditVendorModal(vendorId) {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}`);
+    const data = await res.json();
+    const v = data.vendor;
+
+    container.innerHTML = `
+      <div class="login-modal-box" style="max-width: 500px;">
+        <div class="login-modal-header">
+          <div>
+            <h3 class="login-modal-title">✏️ Edit Vendor: ${escapeHtml(v.name)}</h3>
+            <p class="login-modal-sub">Update stall or settlement parameters</p>
+          </div>
+          <button class="modal-close-btn" onclick="closeModal()">×</button>
+        </div>
+        <form id="editVendorForm" onsubmit="submitEditVendor(event, '${v.id}')" style="padding: 24px;">
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Vendor Name:</label>
+            <input type="text" id="editVendorName" class="form-input" value="${escapeHtml(v.name)}" style="width: 100%; height: 36px;" required>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div>
+              <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Stall Number:</label>
+              <input type="text" id="editVendorStall" class="form-input" value="${escapeHtml(v.stallNo)}" style="width: 100%; height: 36px;" required>
+            </div>
+            <div>
+              <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Commission %:</label>
+              <input type="number" id="editVendorComm" class="form-input" value="${v.commissionPct || 15}" step="0.1" style="width: 100%; height: 36px;" required>
+            </div>
+          </div>
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Category:</label>
+            <input type="text" id="editVendorCat" class="form-input" value="${escapeHtml(v.category || '')}" style="width: 100%; height: 36px;">
+          </div>
+          <div style="margin-bottom: 18px;">
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Phone / UPI ID:</label>
+            <input type="text" id="editVendorPhone" class="form-input" value="${escapeHtml(v.phone || v.upiId || '')}" style="width: 100%; height: 36px;">
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm">Update Vendor</button>
+          </div>
+        </form>
+      </div>
+    `;
+    container.classList.remove('hidden');
+  } catch (err) {
+    toast('Failed to load vendor: ' + err.message, 'error');
+  }
+}
+
+async function submitEditVendor(e, vendorId) {
+  e.preventDefault();
+  const name = document.getElementById('editVendorName').value;
+  const stallNo = document.getElementById('editVendorStall').value;
+  const commissionPct = document.getElementById('editVendorComm').value;
+  const category = document.getElementById('editVendorCat').value;
+  const phone = document.getElementById('editVendorPhone').value;
+
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, stallNo, commissionPct, category, phone })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast('✓ Vendor details updated successfully!', 'success');
+      closeModal();
+      await loadVendorsSummary();
+      await loadAndRenderVendorMgmtTable();
+    } else {
+      toast(`Update failed: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function toggleVendorActiveStatus(vendorId, active) {
+  const msg = active 
+    ? 'Are you sure you want to reactivate this vendor in the directory?' 
+    : 'Are you sure you want to deactivate this vendor? Note: Past settlement and order history will be completely preserved.';
+  if (!confirm(msg)) return;
+
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/toggle-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Vendor ${active ? 'activated' : 'deactivated/archived'} successfully!`, 'info');
+      await loadVendorsSummary();
+      await loadAndRenderVendorMgmtTable();
+    } else {
+      toast(`Status update failed: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+
+// =============================================================
+// KRISHNA PILLAR 6: ORDER-LINKED PAYOUTS & PARTIAL SETTLEMENTS
+// =============================================================
+
+async function renderPayoutManagementView() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+
+  main.innerHTML = `
+    <div class="view-header" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
+          💸 Payout Management
+          <span class="badge badge-green" style="font-size: 0.75rem; vertical-align: middle;">Order-Linked Settlement</span>
+        </h1>
+        <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
+          Disburse vendor settlements linked directly to specific customer orders with full partial-payment and balance tracking.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 10px; align-items: center;">
+        ${(getUserRole() === 'finance' || getUserRole() === 'super_admin') ? `
+          <button class="btn btn-primary btn-sm" onclick="openOrderPayoutModal()">
+            ➕ Record Order-Linked Payout
+          </button>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- Payouts Content Container -->
+    <div id="payoutMgmtContentContainer">
+      <div style="text-align: center; padding: 40px; color: var(--notion-secondary);">
+        ⏳ Loading payouts history...
+      </div>
+    </div>
+  `;
+
+  await loadAndRenderPayoutMgmt();
+}
+
+async function loadAndRenderPayoutMgmt() {
+  const container = document.getElementById('payoutMgmtContentContainer');
+  if (!container) return;
+
+  try {
+    // 1. Fetch vendor summary for overall metrics
+    const vRes = await fetch('/api/vendors');
+    const vData = await vRes.json();
+    const totals = vData.eventTotals || {};
+
+    // 2. Collect all payouts across vendors
+    const allPayouts = [];
+    if (vData && vData.vendors) {
+      for (const vObj of vData.vendors) {
+        const v = vObj.vendor || vObj;
+        const res = await fetch(`/api/vendors/${v.id}`);
+        const single = await res.json();
+        if (single.payouts && single.payouts.length > 0) {
+          single.payouts.forEach(p => {
+            allPayouts.push({ ...p, vendorName: v.name, stallNo: v.stallNo });
+          });
+        }
+      }
+    }
+
+    allPayouts.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+
+    container.innerHTML = `
+      <!-- Financial Summary Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="card" style="padding: 18px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.82rem; color: var(--notion-secondary); margin-bottom: 4px;">Gross Sales Recorded</div>
+          <div style="font-size: 1.4rem; font-weight: 700; color: var(--notion-ink);">${formatINR(totals.grossSales || 0)}</div>
+          <div style="font-size: 0.74rem; color: var(--notion-muted); margin-top: 4px;">Across all vendor stalls</div>
+        </div>
+        <div class="card" style="padding: 18px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.82rem; color: var(--notion-secondary); margin-bottom: 4px;">Net Settlement Payable</div>
+          <div style="font-size: 1.4rem; font-weight: 700; color: #0075DE;">${formatINR(totals.settlementPayable || 0)}</div>
+          <div style="font-size: 0.74rem; color: var(--notion-muted); margin-top: 4px;">After commission deductions</div>
+        </div>
+        <div class="card" style="padding: 18px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.82rem; color: var(--notion-secondary); margin-bottom: 4px;">Total Disbursed</div>
+          <div style="font-size: 1.4rem; font-weight: 700; color: #1AAE39;">${formatINR(totals.alreadyPaid || 0)}</div>
+          <div style="font-size: 0.74rem; color: var(--notion-muted); margin-top: 4px;">Bank & UPI transfers</div>
+        </div>
+        <div class="card" style="padding: 18px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.82rem; color: var(--notion-secondary); margin-bottom: 4px;">Outstanding Balance</div>
+          <div style="font-size: 1.4rem; font-weight: 700; color: ${totals.balanceToPay > 0 ? '#E32D14' : '#1AAE39'};">${formatINR(totals.balanceToPay || 0)}</div>
+          <div style="font-size: 0.74rem; color: var(--notion-muted); margin-top: 4px;">Remaining to settle</div>
+        </div>
+      </div>
+
+      <!-- Payouts Disbursements Table -->
+      <div class="table-card" style="background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); overflow: hidden; box-shadow: var(--shadow-soft);">
+        <div style="padding: 14px 18px; background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); font-size: 0.9rem; font-weight: 600; color: var(--notion-ink);">
+          📋 Payout Disbursements & Order Allocation History
+        </div>
+        ${allPayouts.length === 0 ? `
+          <div style="padding: 40px; text-align: center; color: var(--notion-secondary);">
+            No payout disbursements recorded yet. Click "Record Order-Linked Payout" to disburse funds against unpaid orders.
+          </div>
+        ` : `
+          <div style="overflow-x: auto;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+              <thead>
+                <tr style="background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+                  <th style="padding: 10px 14px;">Date</th>
+                  <th style="padding: 10px 14px;">Vendor & Stall</th>
+                  <th style="padding: 10px 14px; text-align: right;">Amount Paid</th>
+                  <th style="padding: 10px 14px;">Mode & Ref</th>
+                  <th style="padding: 10px 14px;">Allocated Orders</th>
+                  <th style="padding: 10px 14px;">Recorded By</th>
+                  <th style="padding: 10px 14px;">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${allPayouts.map(p => {
+                  const allocations = Array.isArray(p.allocations) ? p.allocations : [];
+                  return `
+                    <tr style="border-bottom: 1px solid var(--notion-hairline-subtle);">
+                      <td style="padding: 12px 14px; white-space: nowrap;">
+                        <strong>${formatDate(p.date || p.createdAt)}</strong>
+                        <div style="font-size: 0.72rem; color: var(--notion-muted);">${escapeHtml(p.id)}</div>
+                      </td>
+                      <td style="padding: 12px 14px;">
+                        <span class="badge" style="background: #eef2f6; font-size: 0.72rem; font-weight: 600;">${escapeHtml(p.stallNo || 'Stall TBD')}</span>
+                        <div style="font-weight: 600; color: var(--notion-ink); margin-top: 2px;">${escapeHtml(p.vendorName || p.vendorId)}</div>
+                      </td>
+                      <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: #1AAE39; font-size: 0.95rem;">
+                        ₹${Number(p.amount || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td style="padding: 12px 14px;">
+                        <span class="badge badge-outline" style="font-size: 0.75rem;">${escapeHtml(p.mode || 'NEFT')}</span>
+                        <div style="font-size: 0.75rem; color: var(--notion-secondary); margin-top: 3px; font-family: var(--font-mono);">${escapeHtml(p.reference || '-')}</div>
+                      </td>
+                      <td style="padding: 12px 14px;">
+                        ${allocations.length > 0 ? `
+                          <div style="display: flex; flex-direction: column; gap: 4px;">
+                            ${allocations.map(a => `
+                              <div style="font-size: 0.78rem; background: #f8f9fa; padding: 3px 8px; border-radius: 4px; border: 1px solid #e9ecef;">
+                                <strong>Bill #${escapeHtml(a.billNo || a.orderId)}</strong>: ₹${Number(a.amount).toLocaleString('en-IN')}
+                                ${a.payoutStatus === 'FULLY_PAID' ? '<span style="color: #28a745; margin-left: 4px;">✓ Settled</span>' : '<span style="color: #e67e22; margin-left: 4px;">⏳ Partial</span>'}
+                              </div>
+                            `).join('')}
+                          </div>
+                        ` : `
+                          <span style="color: var(--notion-muted); font-size: 0.8rem;">Direct / Lumpsum</span>
+                        `}
+                      </td>
+                      <td style="padding: 12px 14px; font-size: 0.8rem; color: var(--notion-secondary);">
+                        ${escapeHtml(p.paidBy || 'Staff')}
+                      </td>
+                      <td style="padding: 12px 14px; font-size: 0.8rem; color: var(--notion-secondary); max-width: 180px;">
+                        ${escapeHtml(p.notes || '-')}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+    `;
+  } catch (err) {
+    container.innerHTML = `<div class="card" style="padding: 24px; color: red;">Error: ${err.message}</div>`;
+  }
+}
+
+// Smart Order-Linked Payout Modal
+async function openOrderPayoutModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  const vendors = (state.vendorsData && state.vendorsData.vendors) ? state.vendorsData.vendors : [];
+
+  container.innerHTML = `
+    <div class="login-modal-box" style="max-width: 680px;">
+      <div class="login-modal-header">
+        <div>
+          <h3 class="login-modal-title">💸 Record Order-Linked Payout</h3>
+          <p class="login-modal-sub">Allocate payment against specific customer orders with remaining balance tracking</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <form id="orderPayoutForm" onsubmit="submitOrderPayout(event)" style="padding: 24px; max-height: 75vh; overflow-y: auto;">
+        <!-- 1. Select Vendor -->
+        <div style="margin-bottom: 18px;">
+          <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Select Vendor:</label>
+          <select id="payoutVendorSelect" class="form-input" style="width: 100%; height: 38px;" onchange="handlePayoutVendorSelect(this.value)" required>
+            <option value="">-- Choose Vendor to Settle --</option>
+            ${vendors.map(vObj => {
+              const v = vObj.vendor || vObj;
+              return `<option value="${v.id}">${v.stallNo}: ${v.name} (Bal: ₹${Math.round(vObj.balanceToPay || 0).toLocaleString('en-IN')})</option>`;
+            }).join('')}
+          </select>
+        </div>
+
+        <!-- 2. Unpaid / Partially Paid Orders Table -->
+        <div id="unpaidOrdersTableArea" style="margin-bottom: 20px;">
+          <div style="padding: 20px; text-align: center; background: var(--notion-surface-warm); border-radius: var(--radius-sm); color: var(--notion-secondary); font-size: 0.85rem;">
+            👆 Please choose a vendor above to load eligible unpaid orders.
+          </div>
+        </div>
+
+        <!-- 3. Payment Mode & Reference Details -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
+          <div>
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Payment Method:</label>
+            <select id="payoutMode" class="form-input" style="width: 100%; height: 36px;">
+              <option value="NEFT / RTGS">NEFT / RTGS Bank Transfer</option>
+              <option value="UPI">UPI Transfer</option>
+              <option value="Cheque">Bank Cheque</option>
+              <option value="Cash">Cash on Counter</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Bank Ref / UTR / Cheque #:</label>
+            <input type="text" id="payoutRef" class="form-input" placeholder="e.g. UTR9281726189" style="width: 100%; height: 36px;" required>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Remarks / Allocation Notes:</label>
+          <input type="text" id="payoutNotes" class="form-input" placeholder="e.g. Cleared morning expo session bills" style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--notion-hairline); padding-top: 16px;">
+          <div>
+            <span style="font-size: 0.82rem; color: var(--notion-secondary);">Total Allocated Payout:</span>
+            <div id="totalPayoutDisplay" style="font-size: 1.3rem; font-weight: 700; color: #1AAE39;">₹0.00</div>
+          </div>
+
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm" id="btnSubmitPayout" disabled>Confirm & Record Payout</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  `;
+  container.classList.remove('hidden');
+}
+
+let activeUnpaidOrders = [];
+
+async function handlePayoutVendorSelect(vendorId) {
+  const container = document.getElementById('unpaidOrdersTableArea');
+  const btn = document.getElementById('btnSubmitPayout');
+  if (!container || !vendorId) {
+    if (container) container.innerHTML = `<div style="padding: 20px; text-align: center; color: #888;">Choose a vendor above.</div>`;
+    if (btn) btn.disabled = true;
+    return;
+  }
+
+  container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--notion-secondary);">⏳ Loading unpaid orders...</div>`;
+
+  try {
+    const res = await fetch(`/api/vendors/${vendorId}/unpaid-orders`);
+    const orders = await res.json();
+    activeUnpaidOrders = orders;
+
+    if (!Array.isArray(orders) || orders.length === 0) {
+      container.innerHTML = `
+        <div style="padding: 20px; text-align: center; background: #eafbf0; border: 1px solid #c3e6cb; border-radius: var(--radius-sm); color: #155724; font-size: 0.85rem;">
+          ✓ All orders for this vendor are fully settled! No outstanding balances.
+        </div>
+      `;
+      if (btn) btn.disabled = true;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="border: 1px solid var(--notion-hairline); border-radius: var(--radius-sm); overflow: hidden;">
+        <div style="padding: 8px 12px; background: var(--notion-surface-warm); font-size: 0.8rem; font-weight: 600; color: var(--notion-secondary); display: flex; justify-content: space-between;">
+          <span>Unpaid / Partially Paid Orders (${orders.length})</span>
+          <span style="font-size: 0.75rem; color: #0075DE;">Sorted by highest outstanding balance</span>
+        </div>
+        <div style="max-height: 240px; overflow-y: auto;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+            <thead>
+              <tr style="background: #fafafa; border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+                <th style="padding: 8px 10px;">Bill #</th>
+                <th style="padding: 8px 10px; text-align: right;">Payable</th>
+                <th style="padding: 8px 10px; text-align: right;">Paid</th>
+                <th style="padding: 8px 10px; text-align: right; color: #E32D14;">Outstanding</th>
+                <th style="padding: 8px 10px; text-align: right; width: 140px;">Allocate (₹)</th>
+                <th style="padding: 8px 10px; text-align: center; width: 60px;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orders.map((o, idx) => `
+                <tr style="border-bottom: 1px solid var(--notion-hairline);">
+                  <td style="padding: 8px 10px;">
+                    <strong>${escapeHtml(o.billNo)}</strong>
+                    <div style="font-size: 0.7rem; color: var(--notion-muted);">${formatDate(o.date)}</div>
+                  </td>
+                  <td style="padding: 8px 10px; text-align: right;">₹${Number(o.totalPayable).toLocaleString('en-IN')}</td>
+                  <td style="padding: 8px 10px; text-align: right; color: #28a745;">₹${Number(o.amountPaid || 0).toLocaleString('en-IN')}</td>
+                  <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #E32D14;">
+                    ₹${Number(o.outstandingBalance).toLocaleString('en-IN')}
+                  </td>
+                  <td style="padding: 8px 10px; text-align: right;">
+                    <input type="number" id="allocInput_${idx}" class="form-input" style="width: 110px; height: 30px; text-align: right; font-size: 0.82rem; padding: 2px 6px;"
+                      step="0.01" min="0" max="${o.outstandingBalance}" placeholder="0.00"
+                      oninput="recalculatePayoutAllocations()">
+                  </td>
+                  <td style="padding: 8px 10px; text-align: center;">
+                    <button type="button" class="btn btn-outline btn-xs" onclick="quickFillAllocation(${idx}, ${o.outstandingBalance})" title="Pay full remaining">
+                      Full
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    if (btn) btn.disabled = false;
+  } catch (err) {
+    container.innerHTML = `<div style="padding: 14px; color: red;">Failed to load unpaid orders: ${err.message}</div>`;
+  }
+}
+
+function quickFillAllocation(index, balance) {
+  const input = document.getElementById(`allocInput_${index}`);
+  if (input) {
+    input.value = balance;
+    recalculatePayoutAllocations();
+  }
+}
+
+function recalculatePayoutAllocations() {
+  let total = 0;
+  activeUnpaidOrders.forEach((o, idx) => {
+    const input = document.getElementById(`allocInput_${idx}`);
+    if (input) {
+      let val = parseFloat(input.value) || 0;
+      if (val > o.outstandingBalance) {
+        toast(`Allocation cannot exceed outstanding balance of ₹${o.outstandingBalance} on Bill #${o.billNo}`, 'error');
+        val = o.outstandingBalance;
+        input.value = val;
+      }
+      total += val;
+    }
+  });
+
+  const display = document.getElementById('totalPayoutDisplay');
+  if (display) display.textContent = formatINR(total);
+
+  const btn = document.getElementById('btnSubmitPayout');
+  if (btn) btn.disabled = total <= 0;
+}
+
+async function submitOrderPayout(e) {
+  e.preventDefault();
+  const vendorId = document.getElementById('payoutVendorSelect').value;
+  const mode = document.getElementById('payoutMode').value;
+  const reference = document.getElementById('payoutRef').value;
+  const notes = document.getElementById('payoutNotes').value;
+
+  const allocations = [];
+  activeUnpaidOrders.forEach((o, idx) => {
+    const input = document.getElementById(`allocInput_${idx}`);
+    if (input) {
+      const amt = parseFloat(input.value) || 0;
+      if (amt > 0) {
+        allocations.push({
+          orderId: o.orderId,
+          billNo: o.billNo,
+          amount: amt
+        });
+      }
+    }
+  });
+
+  if (allocations.length === 0) {
+    toast('Please enter allocation amount for at least one order.', 'error');
+    return;
+  }
+
+  const totalAmount = allocations.reduce((sum, a) => sum + a.amount, 0);
+
+  try {
+    const res = await fetch('/api/payouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vendorId,
+        allocations,
+        amount: totalAmount,
+        mode,
+        reference,
+        notes
+      })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      toast(`✓ Order-linked payout of ${formatINR(totalAmount)} recorded successfully!`, 'success');
+      closeModal();
+      await loadVendorsSummary();
+      await loadAndRenderPayoutMgmt();
+    } else {
+      toast(`Payout recording failed: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast('Network error recording payout: ' + err.message, 'error');
+  }
+}
+
+
+// =============================================================
+// KRISHNA PILLAR 7: AUDIT LOG VIEWER
+// =============================================================
+
+async function renderAuditLogView() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+
+  main.innerHTML = `
+    <div class="view-header" style="margin-bottom: 24px;">
+      <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
+        📜 System Audit Log
+      </h1>
+      <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
+        Immutable audit trail of order edits, Super Admin approvals, Shopify push attempts, and payout disbursements.
+      </p>
+    </div>
+
+    <div id="auditLogContainer">
+      <div style="text-align: center; padding: 40px; color: var(--notion-secondary);">⏳ Loading audit trail...</div>
+    </div>
+  `;
+
+  try {
+    const res = await fetch('/api/audit-logs');
+    const logs = await res.json();
+    const container = document.getElementById('auditLogContainer');
+    if (!container) return;
+
+    if (!Array.isArray(logs) || logs.length === 0) {
+      container.innerHTML = `<div class="card" style="padding: 40px; text-align: center;">No audit entries recorded yet.</div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="table-card" style="background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); overflow: hidden; box-shadow: var(--shadow-soft);">
+        <div style="overflow-x: auto;">
+          <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.84rem;">
+            <thead>
+              <tr style="background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+                <th style="padding: 10px 14px;">Timestamp</th>
+                <th style="padding: 10px 14px;">User / Staff</th>
+                <th style="padding: 10px 14px;">Action</th>
+                <th style="padding: 10px 14px;">Entity</th>
+                <th style="padding: 10px 14px;">Details / Summary</th>
+                <th style="padding: 10px 14px;">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${logs.map(log => `
+                <tr style="border-bottom: 1px solid var(--notion-hairline-subtle);">
+                  <td style="padding: 10px 14px; white-space: nowrap; font-size: 0.78rem; color: var(--notion-secondary);">
+                    ${formatDate(log.timestamp)}
+                  </td>
+                  <td style="padding: 10px 14px; font-weight: 600;">
+                    ${escapeHtml(log.user || 'System')}
+                  </td>
+                  <td style="padding: 10px 14px;">
+                    <span class="badge" style="font-size: 0.72rem; ${log.action.includes('PUSH') ? 'background: #d4edda; color: #155724;' : (log.action.includes('PAYOUT') ? 'background: #e8f4fd; color: #0075DE;' : 'background: #fdf2e9; color: #d35400;')}">
+                      ${escapeHtml(log.action)}
+                    </span>
+                  </td>
+                  <td style="padding: 10px 14px; font-family: var(--font-mono); font-size: 0.75rem;">
+                    ${escapeHtml(log.entity || '-')}: ${escapeHtml(log.entityId || '-')}
+                  </td>
+                  <td style="padding: 10px 14px; font-size: 0.8rem;">
+                    ${log.newValue ? `<strong>New:</strong> ${escapeHtml(log.newValue)}<br>` : ''}
+                    ${log.oldValue ? `<span style="color: #888;">Old: ${escapeHtml(log.oldValue)}</span>` : ''}
+                  </td>
+                  <td style="padding: 10px 14px; font-size: 0.8rem; color: var(--notion-secondary);">
+                    ${escapeHtml(log.reason || '-')}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    document.getElementById('auditLogContainer').innerHTML = `<div style="color: red; padding: 20px;">Error: ${err.message}</div>`;
+  }
+}
+
 
 // -------------------------------------------------------------
 // Toast Notifications

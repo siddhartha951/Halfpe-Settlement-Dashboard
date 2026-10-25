@@ -41,6 +41,12 @@ class Store {
         if (!parsed.dayLocks) parsed.dayLocks = [];
         if (!parsed.users) parsed.users = defaultUsers;
         if (!parsed.events) parsed.events = [defaultEvent];
+        if (!parsed.internalOrders) parsed.internalOrders = [];
+        if (parsed.vendors) {
+          parsed.vendors.forEach(v => {
+            if (v.active === undefined) v.active = true;
+          });
+        }
         return parsed;
       }
     } catch (err) {
@@ -51,6 +57,7 @@ class Store {
       users: defaultUsers,
       vendors: [],
       billRows: [],
+      internalOrders: [],
       returns: [],
       payouts: [],
       dayLocks: [],
@@ -261,6 +268,577 @@ class Store {
     this.data.auditLog.unshift(entry);
     this.save();
     return entry;
+  }
+
+  getAuditLogs(filters = {}) {
+    let logs = this.data.auditLog || [];
+    if (filters.action) logs = logs.filter(l => l.action === filters.action);
+    if (filters.entity) logs = logs.filter(l => l.entity === filters.entity);
+    if (filters.limit) logs = logs.slice(0, filters.limit);
+    return logs;
+  }
+
+  // -------------------------------------------------------------
+  // Internal Orders Management (Krishna's New Staging OMS)
+  // -------------------------------------------------------------
+  recordInternalOrder(orderData, user = 'POS Billing Terminal') {
+    const billNo = (orderData.billNo || orderData.bill_number || `VIJ-${Date.now().toString().slice(-5)}`).trim();
+    const paymentId = (orderData.payment && (orderData.payment.paymentId || orderData.payment.razorpay_payment_id)) || '';
+
+    // Idempotency: check if already exists by billNo or paymentId
+    const existing = (this.data.internalOrders || []).find(o => 
+      o.billNo === billNo || (paymentId && o.payment && o.payment.paymentId === paymentId)
+    );
+    if (existing) {
+      console.log(`[Store] Duplicate internal order submission prevented for ${billNo}`);
+      return { order: existing, isDuplicate: true };
+    }
+
+    // Resolve Vendor from root, stallGroups or items
+    let vendor = null;
+    const candidateVendorId = orderData.vendorId || (orderData.stallGroups?.[0]?.vendorId) || (orderData.items?.[0]?.vendorId);
+    const candidateStallNo = orderData.stallNo || (orderData.stallGroups?.[0]?.stallNo) || (orderData.items?.[0]?.stallNo);
+    const candidateVendorName = orderData.vendorName || (orderData.stallGroups?.[0]?.vendorName) || (orderData.items?.[0]?.vendorName);
+
+    if (candidateVendorId) {
+      vendor = this.data.vendors.find(v => v.id === candidateVendorId);
+    }
+    if (!vendor && candidateStallNo) {
+      const cleanStall = String(candidateStallNo).replace(/\D/g, '');
+      vendor = this.data.vendors.find(v => v.stallNo.replace(/\D/g, '') === cleanStall);
+    }
+    if (!vendor && candidateVendorName) {
+      vendor = this.data.vendors.find(v => v.name.toLowerCase() === candidateVendorName.toLowerCase());
+    }
+
+    const vendorId = vendor ? vendor.id : (candidateVendorId || 'v_unknown');
+    const vendorName = vendor ? vendor.name : (candidateVendorName || 'Unassigned Vendor');
+    const stallNo = vendor ? vendor.stallNo : (candidateStallNo ? (String(candidateStallNo).toLowerCase().includes('stall') ? candidateStallNo : `Stall ${candidateStallNo}`) : 'Stall TBD');
+    const commissionPct = vendor ? Number(vendor.commissionPct ?? 15) : 15;
+
+    const grossAmount = Number(orderData.totals?.payable || orderData.totals?.subtotal || orderData.billAmount || 0);
+    const commissionAmount = Math.round((grossAmount * (commissionPct / 100)) * 100) / 100;
+    const totalPayable = Math.round(Math.max(0, grossAmount - commissionAmount) * 100) / 100;
+
+    const newOrder = {
+      id: 'ord_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      billNo,
+      clientOrderRef: orderData.clientOrderRef || billNo,
+      eventId: 'HPD-VIJ-OCT2026',
+      customer: {
+        name: (orderData.customer?.name || 'Walk-in Shopper').trim(),
+        phone: (orderData.customer?.phone || '').trim(),
+        email: (orderData.customer?.email || '').trim()
+      },
+      vendorId,
+      vendorName,
+      stallNo,
+      commissionPct,
+      items: Array.isArray(orderData.items) ? orderData.items : [],
+      stallGroups: Array.isArray(orderData.stallGroups) ? orderData.stallGroups : [],
+      totals: {
+        grossAmount,
+        commissionPct,
+        commissionAmount,
+        totalPayable
+      },
+      payment: {
+        method: orderData.payment?.method || 'Razorpay',
+        paymentId: paymentId || ('PAY_' + Date.now()),
+        status: orderData.payment?.status || 'PAID',
+        verifiedVia: orderData.payment?.verifiedVia || 'Razorpay Gateway / POS',
+        timestamp: orderData.timestamp || new Date().toISOString()
+      },
+      status: orderData.status || 'PENDING_APPROVAL', // PENDING_APPROVAL, APPROVED, REJECTED
+      shopifySyncStatus: 'NOT_PUSHED', // NOT_PUSHED, PUSHED, FAILED
+      shopifyOrderId: null,
+      shopifyOrderNumber: null,
+      shopifyError: null,
+      pushedAt: null,
+      pushedBy: null,
+      totalPayable,
+      amountPaid: 0,
+      outstandingBalance: totalPayable,
+      payoutStatus: 'UNPAID', // UNPAID, PARTIALLY_PAID, FULLY_PAID
+      payoutAllocations: [],
+      source: orderData.source || 'Payment Page',
+      createdAt: orderData.timestamp || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (!this.data.internalOrders) this.data.internalOrders = [];
+    this.data.internalOrders.unshift(newOrder);
+
+    // Also sync to billRows so existing settlement totals and reports work consistently
+    const billRow = {
+      id: 'row_' + newOrder.id,
+      eventId: 'HPD-VIJ-OCT2026',
+      vendorId,
+      billCopyNo: billNo,
+      billAmount: grossAmount,
+      paymentMode: newOrder.payment.method,
+      paymentOrderRef: newOrder.payment.paymentId,
+      shopifyOrderId: null,
+      customerName: newOrder.customer.name,
+      mobile: newOrder.customer.phone,
+      source: 'Internal Order Flow',
+      status: 'Paid',
+      isVoid: false,
+      voidReason: null,
+      mismatchFlag: false,
+      createdAt: newOrder.createdAt,
+      internalOrderId: newOrder.id
+    };
+    this.data.billRows.unshift(billRow);
+
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Staff'),
+      'ORDER_RECORDED',
+      'internal_orders',
+      newOrder.id,
+      'all',
+      null,
+      `Bill #${billNo} for ₹${grossAmount} (${stallNo} - ${vendorName})`,
+      'Recorded internally before Shopify push'
+    );
+
+    this.save();
+    return { order: newOrder, isDuplicate: false };
+  }
+
+  getInternalOrders(filters = {}) {
+    let orders = [...(this.data.internalOrders || [])];
+
+    if (filters.vendorId && filters.vendorId !== 'all') {
+      orders = orders.filter(o => o.vendorId === filters.vendorId);
+    }
+    if (filters.status && filters.status !== 'all') {
+      orders = orders.filter(o => o.status === filters.status);
+    }
+    if (filters.shopifySyncStatus && filters.shopifySyncStatus !== 'all') {
+      orders = orders.filter(o => o.shopifySyncStatus === filters.shopifySyncStatus);
+    }
+    if (filters.payoutStatus && filters.payoutStatus !== 'all') {
+      orders = orders.filter(o => o.payoutStatus === filters.payoutStatus);
+    }
+    if (filters.startDate || filters.endDate) {
+      orders = this.filterByDateRange(orders, 'createdAt', filters.startDate, filters.endDate);
+    }
+    if (filters.search) {
+      const q = filters.search.toLowerCase().trim();
+      orders = orders.filter(o => 
+        (o.billNo && o.billNo.toLowerCase().includes(q)) ||
+        (o.customer?.name && o.customer.name.toLowerCase().includes(q)) ||
+        (o.customer?.phone && o.customer.phone.includes(q)) ||
+        (o.vendorName && o.vendorName.toLowerCase().includes(q)) ||
+        (o.stallNo && o.stallNo.toLowerCase().includes(q)) ||
+        (o.shopifyOrderNumber && String(o.shopifyOrderNumber).includes(q))
+      );
+    }
+    return orders;
+  }
+
+  getInternalOrderById(id) {
+    return (this.data.internalOrders || []).find(o => o.id === id || o.billNo === id);
+  }
+
+  updateInternalOrder(id, updates = {}, user = 'Super Admin') {
+    const order = this.getInternalOrderById(id);
+    if (!order) return null;
+
+    const oldSnapshot = JSON.stringify(order);
+
+    if (updates.stallNo !== undefined) order.stallNo = updates.stallNo;
+    if (updates.vendorId !== undefined) {
+      order.vendorId = updates.vendorId;
+      const v = this.data.vendors.find(vend => vend.id === updates.vendorId);
+      if (v) {
+        order.vendorName = v.name;
+        order.stallNo = v.stallNo;
+        order.commissionPct = v.commissionPct ?? 15;
+        // Recalculate payable
+        const gross = order.totals.grossAmount;
+        order.totals.commissionPct = order.commissionPct;
+        order.totals.commissionAmount = Math.round((gross * (order.commissionPct / 100)) * 100) / 100;
+        order.totals.totalPayable = Math.round((gross - order.totals.commissionAmount) * 100) / 100;
+        order.totalPayable = order.totals.totalPayable;
+        order.outstandingBalance = Math.max(0, order.totalPayable - order.amountPaid);
+      }
+    }
+    if (updates.customer) {
+      order.customer = { ...order.customer, ...updates.customer };
+    }
+    if (updates.items && Array.isArray(updates.items)) {
+      order.items = updates.items;
+    }
+    if (updates.status !== undefined) {
+      order.status = updates.status;
+    }
+
+    order.updatedAt = new Date().toISOString();
+
+    // Also update linked billRow if present
+    const linkedBill = (this.data.billRows || []).find(r => r.internalOrderId === order.id || r.billCopyNo === order.billNo);
+    if (linkedBill) {
+      linkedBill.vendorId = order.vendorId;
+      linkedBill.customerName = order.customer.name;
+      linkedBill.mobile = order.customer.phone;
+    }
+
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Super Admin'),
+      'ORDER_EDITED',
+      'internal_orders',
+      order.id,
+      'multiple',
+      oldSnapshot.slice(0, 80),
+      JSON.stringify(updates),
+      'Super Admin corrected order details before Shopify push'
+    );
+
+    this.save();
+    return order;
+  }
+
+  markOrderPushed(id, { shopifyOrderId, shopifyOrderNumber, pushedBy, syncResult }) {
+    const order = this.getInternalOrderById(id);
+    if (!order) return null;
+
+    order.shopifySyncStatus = 'PUSHED';
+    order.shopifyOrderId = String(shopifyOrderId);
+    order.shopifyOrderNumber = shopifyOrderNumber;
+    order.pushedAt = new Date().toISOString();
+    order.pushedBy = typeof pushedBy === 'string' ? pushedBy : (pushedBy?.name || 'Super Admin');
+    order.shopifyError = null;
+    order.updatedAt = new Date().toISOString();
+
+    // Also update linked billRow
+    const linkedBill = (this.data.billRows || []).find(r => r.internalOrderId === order.id || r.billCopyNo === order.billNo);
+    if (linkedBill) {
+      linkedBill.shopifyOrderId = order.shopifyOrderId;
+    }
+
+    this.logAudit(
+      order.pushedBy,
+      'PUSH_TO_SHOPIFY_SUCCESS',
+      'internal_orders',
+      order.id,
+      'shopifyOrderId',
+      null,
+      `${shopifyOrderNumber} (ID: ${shopifyOrderId})`,
+      'Successfully pushed approved internal order to Shopify'
+    );
+
+    this.save();
+    return order;
+  }
+
+  markOrderPushFailed(id, { error, pushedBy }) {
+    const order = this.getInternalOrderById(id);
+    if (!order) return null;
+
+    order.shopifySyncStatus = 'FAILED';
+    order.shopifyError = error || 'Shopify creation rejected';
+    order.updatedAt = new Date().toISOString();
+
+    this.logAudit(
+      typeof pushedBy === 'string' ? pushedBy : (pushedBy?.name || 'Super Admin'),
+      'PUSH_TO_SHOPIFY_FAILED',
+      'internal_orders',
+      order.id,
+      'shopifySyncStatus',
+      'NOT_PUSHED',
+      'FAILED',
+      `Shopify push failed: ${error}`
+    );
+
+    this.save();
+    return order;
+  }
+
+  // -------------------------------------------------------------
+  // Order-Linked Payouts & Partial Settlements (Krishna's Requirement)
+  // -------------------------------------------------------------
+  getUnpaidOrdersForVendor(vendorId) {
+    if (!vendorId) return [];
+
+    const results = [];
+    const internalOrders = (this.data.internalOrders || []).filter(o => o.vendorId === vendorId && o.outstandingBalance > 0);
+    
+    internalOrders.forEach(o => {
+      results.push({
+        orderId: o.id,
+        billNo: o.billNo,
+        type: 'internal_order',
+        date: o.createdAt,
+        customerName: o.customer?.name || 'Walk-in',
+        grossAmount: o.totals?.grossAmount || 0,
+        totalPayable: o.totalPayable,
+        amountPaid: o.amountPaid,
+        outstandingBalance: o.outstandingBalance,
+        payoutStatus: o.payoutStatus,
+        shopifyOrderNumber: o.shopifyOrderNumber || '-'
+      });
+    });
+
+    // Also look at billRows if vendor has bills not yet converted to internalOrders
+    const handledBillNos = new Set((this.data.internalOrders || []).map(o => o.billNo));
+    const vendorBills = (this.data.billRows || []).filter(r => r.vendorId === vendorId && !r.isVoid && !handledBillNos.has(r.billCopyNo));
+    
+    const vendor = this.data.vendors.find(v => v.id === vendorId);
+    const commPct = vendor ? Number(vendor.commissionPct ?? 15) : 15;
+
+    vendorBills.forEach(r => {
+      const gross = Number(r.billAmount || 0);
+      const payable = Math.round((gross * (1 - (commPct / 100))) * 100) / 100;
+      const paid = Number(r.amountPaid || 0);
+      const balance = Math.round(Math.max(0, payable - paid) * 100) / 100;
+      if (balance > 0) {
+        results.push({
+          orderId: r.id,
+          billNo: r.billCopyNo || r.id,
+          type: 'bill_row',
+          date: r.createdAt,
+          customerName: r.customerName || 'Walk-in',
+          grossAmount: gross,
+          totalPayable: payable,
+          amountPaid: paid,
+          outstandingBalance: balance,
+          payoutStatus: paid > 0 ? 'PARTIALLY_PAID' : 'UNPAID',
+          shopifyOrderNumber: r.shopifyOrderId || '-'
+        });
+      }
+    });
+
+    // Prioritize orders with highest outstanding balance first
+    results.sort((a, b) => b.outstandingBalance - a.outstandingBalance);
+    return results;
+  }
+
+  recordOrderPayout({ vendorId, allocations, orderAllocations, amount, paymentMode, referenceUtr, referenceNumber, notes, note, adminUser, date }) {
+    const vendor = this.data.vendors.find(v => v.id === vendorId);
+    if (!vendor) throw new Error('Vendor not found.');
+
+    const rawAlloc = allocations || orderAllocations || [];
+    const normalizedAllocations = rawAlloc.map(a => ({
+      ...a,
+      amount: Number(a.amount !== undefined ? a.amount : (a.allocatedAmount ?? 0))
+    }));
+
+    const totalAllocated = normalizedAllocations.reduce((sum, a) => sum + Number(a.amount || 0), 0);
+    const totalAmount = Number(amount || totalAllocated);
+
+    if (totalAmount <= 0) {
+      throw new Error('Payout amount must be greater than zero.');
+    }
+
+    if (Math.abs(totalAllocated - totalAmount) > 0.01) {
+      throw new Error(`Allocated sum (₹${totalAllocated}) must equal payout amount (₹${totalAmount}).`);
+    }
+
+    const payoutId = 'pay_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    const payoutDate = date || new Date().toISOString();
+    const adminName = typeof adminUser === 'string' ? adminUser : (adminUser?.name || 'Super Admin');
+
+    // Process each allocation
+    const processedAllocations = [];
+    for (const alloc of normalizedAllocations) {
+      const allocAmt = Number(alloc.amount);
+      if (allocAmt <= 0) continue;
+
+      let matchedInternal = (this.data.internalOrders || []).find(o => o.id === alloc.orderId || o.billNo === alloc.billNo);
+      if (matchedInternal) {
+        if (allocAmt > matchedInternal.outstandingBalance + 0.01) {
+          throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${matchedInternal.outstandingBalance} for Bill #${matchedInternal.billNo}`);
+        }
+        matchedInternal.amountPaid = Math.round((matchedInternal.amountPaid + allocAmt) * 100) / 100;
+        matchedInternal.outstandingBalance = Math.round(Math.max(0, matchedInternal.totalPayable - matchedInternal.amountPaid) * 100) / 100;
+        matchedInternal.payoutStatus = (matchedInternal.outstandingBalance <= 0.01) ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+        if (!matchedInternal.payoutAllocations) matchedInternal.payoutAllocations = [];
+        matchedInternal.payoutAllocations.push({
+          payoutId,
+          amount: allocAmt,
+          date: payoutDate,
+          reference: referenceUtr || '',
+          recordedBy: adminName
+        });
+        processedAllocations.push({
+          orderId: matchedInternal.id,
+          billNo: matchedInternal.billNo,
+          amount: allocAmt,
+          remainingBalance: matchedInternal.outstandingBalance,
+          payoutStatus: matchedInternal.payoutStatus
+        });
+      } else {
+        // Fallback for historical billRows
+        let matchedBill = (this.data.billRows || []).find(r => r.id === alloc.orderId || r.billCopyNo === alloc.billNo);
+        if (matchedBill) {
+          const commPct = Number(vendor.commissionPct ?? 15);
+          const payable = Math.round((Number(matchedBill.billAmount || 0) * (1 - (commPct / 100))) * 100) / 100;
+          const currentPaid = Number(matchedBill.amountPaid || 0);
+          const balance = Math.round(Math.max(0, payable - currentPaid) * 100) / 100;
+          if (allocAmt > balance + 0.01) {
+            throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${balance} for Bill #${matchedBill.billCopyNo}`);
+          }
+          matchedBill.amountPaid = Math.round((currentPaid + allocAmt) * 100) / 100;
+          matchedBill.outstandingBalance = Math.round(Math.max(0, payable - matchedBill.amountPaid) * 100) / 100;
+          matchedBill.payoutStatus = (matchedBill.outstandingBalance <= 0.01) ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+          processedAllocations.push({
+            orderId: matchedBill.id,
+            billNo: matchedBill.billCopyNo,
+            amount: allocAmt,
+            remainingBalance: matchedBill.outstandingBalance,
+            payoutStatus: matchedBill.payoutStatus
+          });
+        } else {
+          throw new Error(`Order #${alloc.orderId || alloc.billNo} not found for allocation.`);
+        }
+      }
+    }
+
+    const payoutRecord = {
+      id: payoutId,
+      vendorId,
+      vendorName: vendor.name,
+      stallNo: vendor.stallNo,
+      amount: totalAmount,
+      mode: paymentMode || 'NEFT',
+      reference: referenceUtr || `PAY-${Date.now()}`,
+      notes: notes || '',
+      allocations: processedAllocations,
+      date: payoutDate,
+      paidBy: adminName,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!this.data.payouts) this.data.payouts = [];
+    this.data.payouts.unshift(payoutRecord);
+
+    this.logAudit(
+      adminName,
+      'ORDER_PAYOUT_RECORDED',
+      'payouts',
+      payoutId,
+      'allocations',
+      null,
+      `₹${totalAmount} allocated across ${processedAllocations.length} order(s) for ${vendor.name}`,
+      notes || 'Order-linked payout settlement'
+    );
+
+    this.save();
+    return payoutRecord;
+  }
+
+  // -------------------------------------------------------------
+  // Vendor Master Management (CRUD with Soft Deactivation)
+  // -------------------------------------------------------------
+  getVendors(includeInactive = false) {
+    if (!this.data.vendors) return [];
+    if (includeInactive) return this.data.vendors;
+    return this.data.vendors.filter(v => v.active !== false);
+  }
+
+  getVendorById(vendorId) {
+    if (!this.data.vendors) return null;
+    return this.data.vendors.find(v => v.id === vendorId) || null;
+  }
+
+  addVendor(vendorData, user = 'Super Admin') {
+    const name = (vendorData.name || '').trim();
+    if (!name) throw new Error('Vendor name is required.');
+
+    const stallNo = (vendorData.stallNo || 'Stall TBD').trim();
+    const code = (vendorData.code || name.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()).trim();
+    const id = `v_${code}_${Date.now().toString().slice(-4)}`;
+
+    const newVendor = {
+      id,
+      eventId: 'HPD-VIJ-OCT2026',
+      stallNo: stallNo.toLowerCase().includes('stall') ? stallNo : `Stall ${stallNo}`,
+      name,
+      code,
+      category: vendorData.category || 'Retail',
+      webkulSellerId: `WK-${code}`,
+      commissionPct: Number(vendorData.commissionPct ?? 15.0),
+      phone: vendorData.phone || '',
+      upiId: vendorData.upiId || '',
+      bankDetails: vendorData.bankDetails || '',
+      active: true,
+      createdAt: new Date().toISOString()
+    };
+
+    if (!this.data.vendors) this.data.vendors = [];
+    this.data.vendors.push(newVendor);
+
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Super Admin'),
+      'VENDOR_CREATED',
+      'vendors',
+      newVendor.id,
+      'all',
+      null,
+      `${newVendor.name} (${newVendor.stallNo})`,
+      'Vendor added to directory'
+    );
+
+    this.save();
+    return newVendor;
+  }
+
+  updateVendor(vendorId, updates = {}, user = 'Super Admin') {
+    const vendor = this.data.vendors.find(v => v.id === vendorId);
+    if (!vendor) throw new Error('Vendor not found.');
+
+    const oldName = vendor.name;
+    const oldStall = vendor.stallNo;
+
+    if (updates.name) vendor.name = updates.name.trim();
+    if (updates.stallNo) {
+      const s = updates.stallNo.trim();
+      vendor.stallNo = s.toLowerCase().includes('stall') ? s : `Stall ${s}`;
+    }
+    if (updates.category) vendor.category = updates.category.trim();
+    if (updates.commissionPct !== undefined) vendor.commissionPct = Number(updates.commissionPct);
+    if (updates.phone !== undefined) vendor.phone = updates.phone.trim();
+    if (updates.upiId !== undefined) vendor.upiId = updates.upiId.trim();
+    if (updates.bankDetails !== undefined) vendor.bankDetails = updates.bankDetails.trim();
+    vendor.updatedAt = new Date().toISOString();
+
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Super Admin'),
+      'VENDOR_UPDATED',
+      'vendors',
+      vendor.id,
+      'details',
+      `${oldName} (${oldStall})`,
+      `${vendor.name} (${vendor.stallNo})`,
+      'Vendor master details updated'
+    );
+
+    this.save();
+    return vendor;
+  }
+
+  toggleVendorStatus(vendorId, active, user = 'Super Admin') {
+    const vendor = this.data.vendors.find(v => v.id === vendorId);
+    if (!vendor) throw new Error('Vendor not found.');
+
+    vendor.active = !!active;
+    vendor.updatedAt = new Date().toISOString();
+
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Super Admin'),
+      active ? 'VENDOR_ACTIVATED' : 'VENDOR_DEACTIVATED',
+      'vendors',
+      vendor.id,
+      'active',
+      String(!active),
+      String(active),
+      active ? 'Vendor activated in registry' : 'Vendor soft-deactivated/archived to preserve settlement history'
+    );
+
+    this.save();
+    return vendor;
   }
 }
 
