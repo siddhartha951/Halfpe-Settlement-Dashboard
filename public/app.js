@@ -199,6 +199,19 @@ async function init() {
   window.recalculatePayoutAllocations = recalculatePayoutAllocations;
   window.submitOrderPayout = submitOrderPayout;
   window.renderAuditLogView = renderAuditLogView;
+  window.renderTeamAccessView = renderTeamAccessView;
+  window.handleTeamSearch = handleTeamSearch;
+  window.setTeamRoleFilter = setTeamRoleFilter;
+  window.openCreateUserModal = openCreateUserModal;
+  window.submitCreateUser = submitCreateUser;
+  window.openEditUserModal = openEditUserModal;
+  window.submitEditUser = submitEditUser;
+  window.openChangePasswordModal = openChangePasswordModal;
+  window.submitChangePassword = submitChangePassword;
+  window.toggleUserActiveStatus = toggleUserActiveStatus;
+  window.handleRoleTemplateChange = handleRoleTemplateChange;
+  window.toggleAllScopesCheckboxes = toggleAllScopesCheckboxes;
+  window.copyTextToClipboard = copyTextToClipboard;
 }
 
 function updateUserChipUI() {
@@ -541,9 +554,10 @@ function openUserProfileModal() {
 
   const u = state.currentUser;
   const initial = (u.name || 'U').trim().charAt(0).toUpperCase();
+  const canManageTeam = u.role === 'super_admin' || hasScope('user_management');
 
   container.innerHTML = `
-    <div class="login-modal-box" style="max-width: 420px;">
+    <div class="login-modal-box" style="max-width: 440px;">
       <div class="login-modal-header">
         <div>
           <h3 class="login-modal-title">👤 Account Profile</h3>
@@ -555,14 +569,32 @@ function openUserProfileModal() {
         <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 20px;">
           <div class="user-avatar-circle" style="width: 52px; height: 52px; font-size: 1.3rem;">${initial}</div>
           <div>
-            <div style="font-weight: 700; font-size: 1.15rem; color: var(--text-primary);">${u.name}</div>
-            <div style="color: var(--text-muted); font-size: 0.85rem;">${u.email}</div>
+            <div style="font-weight: 700; font-size: 1.15rem; color: var(--text-primary);">${escapeHtml(u.name)}</div>
+            <div style="color: var(--text-muted); font-size: 0.85rem;">${escapeHtml(u.email)}</div>
           </div>
         </div>
-        <div style="margin-bottom: 24px; padding: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); border-radius: 8px;">
-          <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Assigned Role</div>
-          <span class="badge badge-status-paid" style="font-size: 0.85rem; padding: 4px 10px;">${(u.role || 'Admin').toUpperCase()}</span>
+        <div style="margin-bottom: 16px; padding: 12px; background: rgba(0, 0, 0, 0.03); border: 1px solid var(--notion-hairline); border-radius: 8px;">
+          <div style="font-size: 0.72rem; color: var(--notion-secondary); text-transform: uppercase; font-weight: 600; margin-bottom: 2px;">Designation</div>
+          <div style="font-size: 0.95rem; font-weight: 700; color: var(--notion-ink); margin-bottom: 10px;">${escapeHtml(u.designation || 'Staff Member')}</div>
+          
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 0.72rem; color: var(--notion-secondary); text-transform: uppercase; font-weight: 600; margin-bottom: 2px;">Assigned Role</div>
+              <span class="badge" style="font-size: 0.78rem; padding: 3px 8px; background: var(--notion-primary-tint); color: var(--notion-primary); font-weight: 600;">${(u.role || 'Admin').toUpperCase()}</span>
+            </div>
+            <div>
+              <div style="font-size: 0.72rem; color: var(--notion-secondary); text-transform: uppercase; font-weight: 600; margin-bottom: 2px;">Active Scopes</div>
+              <span class="badge" style="font-size: 0.78rem; padding: 3px 8px; background: #e8f5e9; color: #2e7d32; font-weight: 600;">${u.role === 'super_admin' ? 'Full Access (All)' : (u.scopes ? u.scopes.length + ' Scopes' : 'Standard')}</span>
+            </div>
+          </div>
         </div>
+
+        ${canManageTeam ? `
+          <button class="btn btn-primary btn-block" style="padding: 10px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="closeModal(); switchMainTab('team');">
+            <span>👥</span> <strong>Manage Team & Access Control</strong>
+          </button>
+        ` : ''}
+
         <button class="btn btn-danger-outline btn-block" style="padding: 10px;" onclick="logout()">
           🚪 Sign Out
         </button>
@@ -712,7 +744,8 @@ function switchMainTab(tab) {
     orders: 'tabOrders',
     vendor_mgmt: 'tabVendorMgmt',
     payout_mgmt: 'tabPayouts',
-    audit: 'tabAudit'
+    audit: 'tabAudit',
+    team: 'tabTeam'
   };
 
   const drawerIdMap = {
@@ -721,7 +754,8 @@ function switchMainTab(tab) {
     orders: 'mDrawerOrders',
     vendor_mgmt: 'mDrawerVendorMgmt',
     payout_mgmt: 'mDrawerPayouts',
-    audit: 'mDrawerAudit'
+    audit: 'mDrawerAudit',
+    team: 'mDrawerTeam'
   };
 
   // 1. Sync Desktop tabs
@@ -747,6 +781,13 @@ function switchMainTab(tab) {
   renderMain();
 }
 
+function hasScope(scope) {
+  if (!state.currentUser) return false;
+  if (state.currentUser.role === 'super_admin') return true;
+  const scopes = state.currentUser.scopes || [];
+  return scopes.includes(scope);
+}
+
 function updateNavigationVisibility() {
   const isAuth = Boolean(state.currentUser);
   const desktopNav = document.querySelector('.desktop-nav');
@@ -759,16 +800,50 @@ function updateNavigationVisibility() {
   if (mobileBottomNav) mobileBottomNav.style.display = isAuth ? '' : 'none';
   if (syncBtn) syncBtn.style.display = isAuth ? '' : 'none';
 
-  // Vendor role restrictions: vendor users should only see their own vendor portal
-  if (isAuth && state.currentUser.role === 'vendor') {
-    const tabOverall = document.getElementById('tabOverall');
-    const tabVendorMgmt = document.getElementById('tabVendorMgmt');
-    const tabOrders = document.getElementById('tabOrders');
-    const tabPayouts = document.getElementById('tabPayouts');
-    const tabAudit = document.getElementById('tabAudit');
-    if (tabOverall) tabOverall.style.display = 'none';
-    if (tabVendorMgmt) tabVendorMgmt.style.display = 'none';
-    if (tabAudit) tabAudit.style.display = 'none';
+  if (!isAuth) return;
+
+  const setElVisible = (id, visible) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = visible ? '' : 'none';
+  };
+
+  setElVisible('tabOverall', hasScope('overall_settlement'));
+  setElVisible('mDrawerOverall', hasScope('overall_settlement'));
+
+  setElVisible('tabVendors', hasScope('vendor_wise'));
+  setElVisible('mDrawerVendors', hasScope('vendor_wise'));
+
+  setElVisible('tabOrders', hasScope('orders_management'));
+  setElVisible('mDrawerOrders', hasScope('orders_management'));
+
+  setElVisible('tabVendorMgmt', hasScope('vendor_management'));
+  setElVisible('mDrawerVendorMgmt', hasScope('vendor_management'));
+
+  setElVisible('tabPayouts', hasScope('payout_management'));
+  setElVisible('mDrawerPayouts', hasScope('payout_management'));
+
+  setElVisible('tabAudit', hasScope('audit_log'));
+  setElVisible('mDrawerAudit', hasScope('audit_log'));
+
+  const canManageTeam = state.currentUser.role === 'super_admin' || hasScope('user_management');
+  setElVisible('tabTeam', canManageTeam);
+  setElVisible('mDrawerTeam', canManageTeam);
+
+  // Auto-redirect if active tab is forbidden for current user's scopes
+  const tabScopeMap = {
+    overall: 'overall_settlement',
+    vendors: 'vendor_wise',
+    orders: 'orders_management',
+    vendor_mgmt: 'vendor_management',
+    payout_mgmt: 'payout_management',
+    audit: 'audit_log',
+    team: 'user_management'
+  };
+
+  const currentTabScope = tabScopeMap[state.activeTab];
+  if (currentTabScope && !hasScope(currentTabScope)) {
+    const permittedTab = Object.keys(tabScopeMap).find(t => hasScope(tabScopeMap[t])) || 'vendors';
+    state.activeTab = permittedTab;
   }
 }
 
@@ -799,6 +874,8 @@ function renderMain() {
     renderPayoutManagementView();
   } else if (state.activeTab === 'audit') {
     renderAuditLogView();
+  } else if (state.activeTab === 'team') {
+    renderTeamAccessView();
   } else {
     renderVendorsListView();
   }
@@ -4467,6 +4544,905 @@ async function renderAuditLogView() {
   }
 }
 
+// -------------------------------------------------------------
+// Team & Access Control Module (Super Admin Portal)
+// -------------------------------------------------------------
+state.teamUsers = [];
+state.allScopes = [];
+state.teamSearchQuery = '';
+state.teamRoleFilter = 'all';
+
+async function fetchTeamScopes() {
+  if (state.allScopes && state.allScopes.length > 0) return state.allScopes;
+  try {
+    const res = await fetch('/api/auth/scopes');
+    const data = await res.json();
+    if (data.scopes && Array.isArray(data.scopes)) {
+      state.allScopes = data.scopes;
+      return data.scopes;
+    }
+  } catch (e) {
+    console.warn('Failed to load scopes:', e);
+  }
+  return [];
+}
+
+async function fetchTeamUsers() {
+  try {
+    const res = await fetch('/api/users');
+    const data = await res.json();
+    if (data.users && Array.isArray(data.users)) {
+      state.teamUsers = data.users;
+      return data.users;
+    }
+  } catch (e) {
+    console.error('Failed to load team users:', e);
+  }
+  return [];
+}
+
+function renderTeamAccessView() {
+  const main = document.getElementById('mainContent');
+  if (!main) return;
+
+  const canManage = state.currentUser && (state.currentUser.role === 'super_admin' || hasScope('user_management'));
+  if (!canManage) {
+    main.innerHTML = `
+      <div style="padding: 60px 20px; text-align: center; max-width: 600px; margin: 0 auto;">
+        <div style="font-size: 3rem; margin-bottom: 16px;">🔒</div>
+        <h2 style="font-size: 1.4rem; font-weight: 700; margin-bottom: 8px;">Access Restricted</h2>
+        <p style="color: var(--notion-secondary); font-size: 0.95rem; margin-bottom: 24px;">
+          Only Super Admin Krishna or authorized team managers have permission to create credentials and manage access scopes.
+        </p>
+        <button class="btn btn-outline" onclick="switchMainTab('overall')">Return to Overall Settlement</button>
+      </div>
+    `;
+    return;
+  }
+
+  main.innerHTML = `
+    <div class="team-management-view" style="padding: 24px 32px; max-width: 1400px; margin: 0 auto;">
+      <!-- Header -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h1 style="font-size: 1.6rem; font-weight: 700; margin: 0;">👥 Team & Access Control</h1>
+            <span class="badge" style="background: var(--notion-primary-tint); color: var(--notion-primary); font-weight: 600; padding: 4px 10px; font-size: 0.78rem;">
+              Super Admin Portal
+            </span>
+          </div>
+          <p style="color: var(--notion-secondary); font-size: 0.9rem; margin-top: 6px; max-width: 800px; line-height: 1.5;">
+            Create user credentials, generate passwords, assign designations & control granular permission scopes. Newly provisioned credentials activate immediately with 0 delay.
+          </p>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center;">
+          <button class="btn btn-primary" onclick="openCreateUserModal()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; font-weight: 600; box-shadow: var(--shadow-soft);">
+            <span style="font-size: 1.1rem;">➕</span> <span>Create User & Share Access</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI Summary Cards -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="card" style="padding: 18px 20px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--notion-secondary); font-weight: 600; letter-spacing: 0.04em;">Total User Accounts</div>
+          <div id="kpiTeamTotal" style="font-size: 1.8rem; font-weight: 700; color: var(--notion-ink); margin-top: 6px;">-</div>
+          <div style="font-size: 0.75rem; color: var(--notion-muted); margin-top: 4px;">Registered on Settlement Engine</div>
+        </div>
+
+        <div class="card" style="padding: 18px 20px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.75rem; text-transform: uppercase; color: #1AAE39; font-weight: 600; letter-spacing: 0.04em;">Active Credentials</div>
+          <div id="kpiTeamActive" style="font-size: 1.8rem; font-weight: 700; color: #1AAE39; margin-top: 6px;">-</div>
+          <div style="font-size: 0.75rem; color: var(--notion-muted); margin-top: 4px;">Can log in immediately</div>
+        </div>
+
+        <div class="card" style="padding: 18px 20px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--notion-primary); font-weight: 600; letter-spacing: 0.04em;">Super Admins</div>
+          <div id="kpiTeamAdmins" style="font-size: 1.8rem; font-weight: 700; color: var(--notion-primary); margin-top: 6px;">-</div>
+          <div style="font-size: 0.75rem; color: var(--notion-muted); margin-top: 4px;">Full system authority</div>
+        </div>
+
+        <div class="card" style="padding: 18px 20px; background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); box-shadow: var(--shadow-soft);">
+          <div style="font-size: 0.75rem; text-transform: uppercase; color: #E89D01; font-weight: 600; letter-spacing: 0.04em;">Scoped Staff & Vendors</div>
+          <div id="kpiTeamScoped" style="font-size: 1.8rem; font-weight: 700; color: #E89D01; margin-top: 6px;">-</div>
+          <div style="font-size: 0.75rem; color: var(--notion-muted); margin-top: 4px;">Role-restricted scopes</div>
+        </div>
+      </div>
+
+      <!-- Search & Filters Toolbar -->
+      <div style="background: #fff; border: 1px solid var(--notion-hairline); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; box-shadow: var(--shadow-soft);">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1; max-width: 420px; min-width: 260px;">
+          <span style="font-size: 1rem; opacity: 0.6;">🔍</span>
+          <input type="text" id="teamSearchInput" class="form-input" placeholder="Search by name, email, designation..." 
+            value="${escapeHtml(state.teamSearchQuery)}"
+            oninput="handleTeamSearch(this.value)" 
+            style="margin: 0; width: 100%; font-size: 0.88rem; padding: 8px 12px;" />
+        </div>
+
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;" id="teamRoleFilterGroup">
+          <span style="font-size: 0.78rem; color: var(--notion-secondary); margin-right: 4px;">Filter:</span>
+          <button class="btn btn-xs ${state.teamRoleFilter === 'all' ? 'btn-primary' : 'btn-outline'}" onclick="setTeamRoleFilter('all')">All</button>
+          <button class="btn btn-xs ${state.teamRoleFilter === 'super_admin' ? 'btn-primary' : 'btn-outline'}" onclick="setTeamRoleFilter('super_admin')">Super Admin</button>
+          <button class="btn btn-xs ${state.teamRoleFilter === 'finance' ? 'btn-primary' : 'btn-outline'}" onclick="setTeamRoleFilter('finance')">Finance</button>
+          <button class="btn btn-xs ${state.teamRoleFilter === 'billing_staff' ? 'btn-primary' : 'btn-outline'}" onclick="setTeamRoleFilter('billing_staff')">Billing Staff</button>
+          <button class="btn btn-xs ${state.teamRoleFilter === 'vendor' ? 'btn-primary' : 'btn-outline'}" onclick="setTeamRoleFilter('vendor')">Vendor Stalls</button>
+        </div>
+      </div>
+
+      <!-- Table Container -->
+      <div id="teamTableContainer">
+        <div style="text-align: center; padding: 40px; color: var(--notion-secondary);">⏳ Loading team members & credentials...</div>
+      </div>
+    </div>
+  `;
+
+  loadAndRenderTeamTable();
+}
+
+async function loadAndRenderTeamTable() {
+  const container = document.getElementById('teamTableContainer');
+  if (!container) return;
+
+  const [users, scopes] = await Promise.all([fetchTeamUsers(), fetchTeamScopes()]);
+
+  // Update KPIs
+  const totalCount = users.length;
+  const activeCount = users.filter(u => u.active !== false).length;
+  const adminCount = users.filter(u => u.role === 'super_admin').length;
+  const scopedCount = totalCount - adminCount;
+
+  const kpiTotal = document.getElementById('kpiTeamTotal');
+  const kpiActive = document.getElementById('kpiTeamActive');
+  const kpiAdmins = document.getElementById('kpiTeamAdmins');
+  const kpiScoped = document.getElementById('kpiTeamScoped');
+  if (kpiTotal) kpiTotal.textContent = totalCount;
+  if (kpiActive) kpiActive.textContent = activeCount;
+  if (kpiAdmins) kpiAdmins.textContent = adminCount;
+  if (kpiScoped) kpiScoped.textContent = scopedCount;
+
+  // Filter users
+  let filtered = [...users];
+  if (state.teamRoleFilter !== 'all') {
+    filtered = filtered.filter(u => u.role === state.teamRoleFilter);
+  }
+  if (state.teamSearchQuery && state.teamSearchQuery.trim()) {
+    const q = state.teamSearchQuery.toLowerCase().trim();
+    filtered = filtered.filter(u => 
+      (u.name && u.name.toLowerCase().includes(q)) ||
+      (u.email && u.email.toLowerCase().includes(q)) ||
+      (u.designation && u.designation.toLowerCase().includes(q)) ||
+      (u.role && u.role.toLowerCase().includes(q))
+    );
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="card" style="padding: 40px; text-align: center; background: #fff; border: 1px solid var(--notion-hairline); border-radius: var(--radius-md);">
+        <div style="font-size: 2rem; margin-bottom: 10px;">🔍</div>
+        <div style="font-weight: 600; font-size: 1rem; color: var(--notion-ink);">No matching users found</div>
+        <div style="color: var(--notion-secondary); font-size: 0.85rem; margin-top: 4px;">Try adjusting your search query or role filter.</div>
+      </div>
+    `;
+    return;
+  }
+
+  const scopeMap = {};
+  scopes.forEach(s => { scopeMap[s.id] = s.label; });
+
+  container.innerHTML = `
+    <div class="table-card" style="background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); overflow: hidden; box-shadow: var(--shadow-soft);">
+      <div style="overflow-x: auto;">
+        <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+          <thead>
+            <tr style="background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+              <th style="padding: 12px 16px; font-weight: 600; color: var(--notion-secondary); font-size: 0.75rem; text-transform: uppercase;">User & Credentials</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: var(--notion-secondary); font-size: 0.75rem; text-transform: uppercase;">Designation</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: var(--notion-secondary); font-size: 0.75rem; text-transform: uppercase;">Role</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: var(--notion-secondary); font-size: 0.75rem; text-transform: uppercase;">Granted Permissions (Scopes)</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: var(--notion-secondary); font-size: 0.75rem; text-transform: uppercase; text-align: center;">Status</th>
+              <th style="padding: 12px 16px; font-weight: 600; color: var(--notion-secondary); font-size: 0.75rem; text-transform: uppercase; text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filtered.map(u => {
+              const initial = (u.name || 'U').trim().charAt(0).toUpperCase();
+              const isSuper = u.role === 'super_admin';
+              const isActive = u.active !== false;
+              const scopesList = u.scopes || [];
+
+              return `
+                <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); ${!isActive ? 'opacity: 0.6; background: rgba(0,0,0,0.01);' : ''}">
+                  <!-- User & Credentials -->
+                  <td style="padding: 12px 16px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <div class="user-avatar-circle" style="width: 38px; height: 38px; font-size: 1rem; flex-shrink: 0; background: ${isSuper ? 'var(--notion-primary-tint)' : 'var(--notion-surface-warm)'}; color: ${isSuper ? 'var(--notion-primary)' : 'var(--notion-ink)'}; border: 1px solid var(--notion-hairline);">
+                        ${initial}
+                      </div>
+                      <div>
+                        <div style="font-weight: 600; font-size: 0.92rem; color: var(--notion-ink);">
+                          ${escapeHtml(u.name)}
+                          ${isSuper ? '<span style="font-size: 0.7rem; margin-left: 4px;" title="Super Administrator">👑</span>' : ''}
+                        </div>
+                        <div style="color: var(--notion-secondary); font-size: 0.8rem; font-family: var(--font-mono);">
+                          ${escapeHtml(u.email)}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+
+                  <!-- Designation -->
+                  <td style="padding: 12px 16px;">
+                    <div style="font-weight: 600; color: var(--notion-ink); font-size: 0.88rem;">
+                      ${escapeHtml(u.designation || 'Staff Member')}
+                    </div>
+                    ${u.vendorId ? `<div style="font-size: 0.75rem; color: var(--notion-secondary);">Stall: ${escapeHtml(u.vendorId)}</div>` : ''}
+                  </td>
+
+                  <!-- Role -->
+                  <td style="padding: 12px 16px;">
+                    <span class="badge" style="font-size: 0.72rem; padding: 3px 8px; font-weight: 600; ${
+                      isSuper ? 'background: #e6f3fe; color: #0075DE;' :
+                      u.role === 'finance' ? 'background: #fdf2e9; color: #d35400;' :
+                      u.role === 'billing_staff' ? 'background: #e8f5e9; color: #2e7d32;' :
+                      u.role === 'vendor' ? 'background: #f3e8fd; color: #7c3aed;' :
+                      'background: var(--notion-surface-warm); color: var(--notion-secondary);'
+                    }">
+                      ${(u.role || 'Staff').replace('_', ' ').toUpperCase()}
+                    </span>
+                  </td>
+
+                  <!-- Granted Scopes -->
+                  <td style="padding: 12px 16px; max-width: 380px;">
+                    ${isSuper ? `
+                      <span class="badge" style="background: #e8f5e9; color: #2e7d32; font-size: 0.75rem; padding: 4px 8px; font-weight: 600;">
+                        🌟 All Permissions Granted (Full Access)
+                      </span>
+                    ` : (
+                      scopesList.length > 0 ? `
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                          ${scopesList.map(sId => `
+                            <span class="badge" style="font-size: 0.7rem; padding: 2px 6px; background: rgba(0, 117, 222, 0.08); color: var(--notion-primary); font-weight: 500;">
+                              ${escapeHtml(scopeMap[sId] || sId)}
+                            </span>
+                          `).join('')}
+                        </div>
+                      ` : `
+                        <span style="font-size: 0.75rem; color: var(--notion-muted); font-style: italic;">No scopes assigned</span>
+                      `
+                    )}
+                  </td>
+
+                  <!-- Status -->
+                  <td style="padding: 12px 16px; text-align: center;">
+                    <span class="badge" style="font-size: 0.75rem; padding: 3px 10px; font-weight: 600; ${isActive ? 'background: #e8f5e9; color: #2e7d32;' : 'background: #fde8e8; color: #c81e1e;'}">
+                      ${isActive ? '✅ Active' : '⛔ Suspended'}
+                    </span>
+                  </td>
+
+                  <!-- Actions -->
+                  <td style="padding: 12px 16px; text-align: right; white-space: nowrap;">
+                    <div style="display: inline-flex; gap: 6px; align-items: center;">
+                      <button class="btn btn-outline btn-xs" onclick="openEditUserModal('${u.id}')" title="Edit Scopes & Designation">
+                        ✏️ Edit
+                      </button>
+                      <button class="btn btn-outline btn-xs" onclick="openChangePasswordModal('${u.id}')" title="Set New Password">
+                        🔑 Password
+                      </button>
+                      ${u.id !== 'usr_1' ? `
+                        <button class="btn btn-xs ${isActive ? 'btn-danger-outline' : 'btn-primary'}" 
+                          onclick="toggleUserActiveStatus('${u.id}', ${isActive})" 
+                          title="${isActive ? 'Suspend User Access' : 'Activate User Access'}">
+                          ${isActive ? 'Suspend' : 'Activate'}
+                        </button>
+                      ` : ''}
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function handleTeamSearch(val) {
+  state.teamSearchQuery = val || '';
+  loadAndRenderTeamTable();
+}
+
+function setTeamRoleFilter(role) {
+  state.teamRoleFilter = role || 'all';
+  const group = document.getElementById('teamRoleFilterGroup');
+  if (group) {
+    group.querySelectorAll('button').forEach(btn => {
+      btn.className = 'btn btn-xs btn-outline';
+    });
+    const activeBtn = group.querySelector(`[onclick="setTeamRoleFilter('${role}')"]`);
+    if (activeBtn) activeBtn.className = 'btn btn-xs btn-primary';
+  }
+  loadAndRenderTeamTable();
+}
+
+// -------------------------------------------------------------
+// Create User Modal (Krishna provisions credentials & scopes)
+// -------------------------------------------------------------
+async function openCreateUserModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  const scopes = await fetchTeamScopes();
+  const vendors = (state.vendorsData && state.vendorsData.vendors) ? state.vendorsData.vendors : [];
+
+  // Generate suggested strong password
+  const randNum = Math.floor(1000 + Math.random() * 9000);
+  const defaultPass = `HalfPe@${randNum}`;
+
+  container.innerHTML = `
+    <div class="modal-dialog" style="max-width: 680px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span>➕</span> <span>Create User & Share Access</span>
+          </h3>
+          <p style="font-size: 0.8rem; color: var(--notion-secondary); margin-top: 2px;">
+            Super Admin Portal: Setup login credentials, assign designation, and select custom scopes.
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <form onsubmit="submitCreateUser(event)" style="display: flex; flex-direction: column; overflow-y: auto; flex: 1;">
+        <div class="modal-body" style="padding: 20px 24px;">
+
+          <!-- Row 1: Name & Designation -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label required">Full Name</label>
+              <input type="text" id="newUserName" class="form-input" placeholder="e.g. Siddhartha Sharma" required />
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label required">Designation / Job Title</label>
+              <input type="text" id="newUserDesignation" class="form-input" placeholder="e.g. Operations Manager" required />
+            </div>
+          </div>
+
+          <!-- Row 2: Email & Password -->
+          <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label required">Email ID (Login Username)</label>
+              <input type="email" id="newUserEmail" class="form-input" placeholder="e.g. user@halfpe.com" required autocomplete="off" />
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label required" style="display: flex; justify-content: space-between;">
+                <span>Set Password</span>
+                <span style="font-size: 0.72rem; color: var(--notion-primary); cursor: pointer;" onclick="document.getElementById('newUserPassword').value = 'HalfPe@' + Math.floor(1000 + Math.random() * 9000)">🎲 New Random</span>
+              </label>
+              <div style="position: relative;">
+                <input type="text" id="newUserPassword" class="form-input" value="${defaultPass}" required style="font-family: var(--font-mono); padding-right: 36px;" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Role Preset & Optional Vendor -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; background: rgba(0,0,0,0.02); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--notion-hairline);">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label required">Role Template Preset</label>
+              <select id="newUserRole" class="form-select" onchange="handleRoleTemplateChange(this.value)" required>
+                <option value="custom">🛠️ Custom Access (Pick Scopes Below)</option>
+                <option value="super_admin">👑 Super Admin (Full Access to Everything)</option>
+                <option value="finance">💼 Finance & Accounts (Settlement + Payouts + Reports)</option>
+                <option value="billing_staff">🧾 Billing Staff (Orders + POS Simulation)</option>
+                <option value="auditor">📜 Auditor (Read-only Settlement + Audit Logs)</option>
+                <option value="vendor">🏪 Vendor Stall (Stall-isolated View)</option>
+              </select>
+            </div>
+            <div class="form-group" id="newUserVendorWrap" style="margin: 0; display: none;">
+              <label class="form-label">Linked Vendor Stall</label>
+              <select id="newUserVendorId" class="form-select">
+                <option value="">-- Select Vendor Stall --</option>
+                ${vendors.map(v => `<option value="${v.vendorId}">${escapeHtml(v.vendorName)} (${v.stallNumber || v.vendorId})</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <!-- Section: Granular Permissions (Scopes) -->
+          <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <label class="form-label" style="margin: 0; font-weight: 700; font-size: 0.9rem; color: var(--notion-ink);">
+                🛡️ Granular Permissions & Scopes Checklist
+              </label>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-xs btn-outline" onclick="toggleAllScopesCheckboxes(true)">Select All</button>
+                <button type="button" class="btn btn-xs btn-outline" onclick="toggleAllScopesCheckboxes(false)">Clear All</button>
+              </div>
+            </div>
+            <span class="form-helper" style="display: block; margin-bottom: 12px;">
+              Only the selected modules will be visible in the navigation and accessible to this user upon logging in.
+            </span>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 240px; overflow-y: auto; padding: 4px;">
+              ${scopes.map(s => `
+                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: #fff; border: 1px solid var(--notion-hairline); border-radius: 6px; cursor: pointer; transition: all 0.15s ease;" class="scope-checkbox-label">
+                  <input type="checkbox" name="userScopeCheckbox" value="${s.id}" style="margin-top: 3px; accent-color: var(--notion-primary);" />
+                  <div>
+                    <div style="font-weight: 600; font-size: 0.82rem; color: var(--notion-ink);">${escapeHtml(s.label)}</div>
+                    <div style="font-size: 0.72rem; color: var(--notion-secondary); line-height: 1.3;">${escapeHtml(s.desc)}</div>
+                  </div>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer" style="background: var(--notion-surface-warm); border-top: 1px solid var(--notion-hairline); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px;">
+            <span>🚀</span> <strong>Create User & Activate Immediately</strong>
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  container.classList.remove('hidden');
+}
+
+function handleRoleTemplateChange(role) {
+  const vendorWrap = document.getElementById('newUserVendorWrap');
+  if (vendorWrap) {
+    vendorWrap.style.display = role === 'vendor' ? 'block' : 'none';
+  }
+
+  const roleScopeMap = {
+    super_admin: ['overall_settlement', 'vendor_wise', 'orders_management', 'orders_approval', 'vendor_management', 'payout_management', 'audit_log', 'user_management', 'export_reports', 'simulate_orders'],
+    finance: ['overall_settlement', 'vendor_wise', 'payout_management', 'audit_log', 'export_reports'],
+    billing_staff: ['orders_management', 'simulate_orders'],
+    auditor: ['overall_settlement', 'vendor_wise', 'audit_log', 'export_reports'],
+    vendor: ['vendor_wise']
+  };
+
+  const targetScopes = roleScopeMap[role];
+  if (targetScopes) {
+    document.querySelectorAll('input[name="userScopeCheckbox"]').forEach(cb => {
+      cb.checked = targetScopes.includes(cb.value);
+    });
+  }
+}
+
+function toggleAllScopesCheckboxes(check) {
+  document.querySelectorAll('input[name="userScopeCheckbox"]').forEach(cb => {
+    cb.checked = check;
+  });
+}
+
+async function submitCreateUser(e) {
+  e.preventDefault();
+  const name = document.getElementById('newUserName').value.trim();
+  const designation = document.getElementById('newUserDesignation').value.trim();
+  const email = document.getElementById('newUserEmail').value.trim();
+  const password = document.getElementById('newUserPassword').value.trim();
+  const role = document.getElementById('newUserRole').value;
+  const vendorId = document.getElementById('newUserVendorId') ? document.getElementById('newUserVendorId').value : null;
+
+  const checkedScopes = Array.from(document.querySelectorAll('input[name="userScopeCheckbox"]:checked')).map(cb => cb.value);
+
+  if (!email || !password || !name) {
+    alert('Please fill out Name, Email, and Password.');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        designation,
+        email,
+        password,
+        role: role === 'custom' ? 'staff' : role,
+        scopes: checkedScopes,
+        vendorId
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || 'Failed to create user');
+      return;
+    }
+
+    toast(`✓ User ${name} created successfully!`, 'success');
+
+    // Show credential share dialog
+    openCredentialShareDialog({
+      name,
+      email,
+      password,
+      designation,
+      role: role.toUpperCase(),
+      scopesCount: checkedScopes.length
+    });
+
+    await loadAndRenderTeamTable();
+  } catch (err) {
+    toast('Error creating user: ' + err.message, 'error');
+  }
+}
+
+function openCredentialShareDialog({ name, email, password, designation, role, scopesCount }) {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  const loginUrl = window.location.origin;
+  const copyText = `HalfPe Settlement Portal Access
+---------------------------------
+Name: ${name}
+Designation: ${designation}
+Role: ${role}
+Email: ${email}
+Password: ${password}
+Login URL: ${loginUrl}
+Scopes: ${scopesCount} active permissions`;
+
+  container.innerHTML = `
+    <div class="modal-dialog" style="max-width: 520px;">
+      <div class="modal-header" style="background: #e8f5e9;">
+        <div>
+          <h3 class="modal-title" style="color: #2e7d32; display: flex; align-items: center; gap: 8px;">
+            <span>✅</span> <span>Credentials Created & Active</span>
+          </h3>
+          <p style="font-size: 0.8rem; color: #1b5e20; margin-top: 2px;">
+            User account is live immediately! Copy and share these credentials with the team member.
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <div class="modal-body" style="padding: 20px 24px;">
+        <div style="background: var(--notion-surface-warm); border: 1px solid var(--notion-hairline); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 0.75rem; color: var(--notion-secondary); text-transform: uppercase;">User Name:</span>
+            <strong style="font-size: 0.88rem; color: var(--notion-ink);">${escapeHtml(name)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 0.75rem; color: var(--notion-secondary); text-transform: uppercase;">Designation:</span>
+            <strong style="font-size: 0.88rem; color: var(--notion-primary);">${escapeHtml(designation)}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 0.75rem; color: var(--notion-secondary); text-transform: uppercase;">Email / Username:</span>
+            <code style="font-size: 0.88rem; color: #0075DE; font-weight: 700;">${escapeHtml(email)}</code>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="font-size: 0.75rem; color: var(--notion-secondary); text-transform: uppercase;">Password:</span>
+            <code style="font-size: 0.95rem; color: #1AAE39; font-weight: 700; background: #fff; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--notion-hairline);">${escapeHtml(password)}</code>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="font-size: 0.75rem; color: var(--notion-secondary); text-transform: uppercase;">Login URL:</span>
+            <span style="font-size: 0.8rem; color: var(--notion-secondary);">${loginUrl}</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-block" style="padding: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;" onclick="copyTextToClipboard(\`${escapeHtml(copyText)}\`)">
+          <span>📋</span> <span>Copy Full Credentials to Clipboard</span>
+        </button>
+      </div>
+
+      <div class="modal-footer" style="padding: 12px 24px;">
+        <button type="button" class="btn btn-outline btn-block" onclick="closeModal()">Done</button>
+      </div>
+    </div>
+  `;
+
+  container.classList.remove('hidden');
+}
+
+// -------------------------------------------------------------
+// Edit User Modal (Edit designation, role, & granular scopes)
+// -------------------------------------------------------------
+async function openEditUserModal(userId) {
+  const user = (state.teamUsers || []).find(u => u.id === userId);
+  if (!user) {
+    toast('User not found', 'error');
+    return;
+  }
+
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  const scopes = await fetchTeamScopes();
+  const vendors = (state.vendorsData && state.vendorsData.vendors) ? state.vendorsData.vendors : [];
+  const userScopes = user.scopes || [];
+
+  container.innerHTML = `
+    <div class="modal-dialog" style="max-width: 680px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span>✏️</span> <span>Edit User: ${escapeHtml(user.name)}</span>
+          </h3>
+          <p style="font-size: 0.8rem; color: var(--notion-secondary); margin-top: 2px;">
+            Update designation, role, or granular access scopes.
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <form onsubmit="submitEditUser(event, '${user.id}')" style="display: flex; flex-direction: column; overflow-y: auto; flex: 1;">
+        <div class="modal-body" style="padding: 20px 24px;">
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label required">Full Name</label>
+              <input type="text" id="editUserName" class="form-input" value="${escapeHtml(user.name)}" required />
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label required">Designation / Job Title</label>
+              <input type="text" id="editUserDesignation" class="form-input" value="${escapeHtml(user.designation || '')}" placeholder="e.g. Finance Head" required />
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label">Email Address (Read-only)</label>
+              <input type="email" class="form-input" value="${escapeHtml(user.email)}" disabled style="background: rgba(0,0,0,0.03); color: var(--notion-secondary);" />
+            </div>
+            <div class="form-group" style="margin: 0;">
+              <label class="form-label">Assigned Role</label>
+              <select id="editUserRole" class="form-select" onchange="handleEditRoleChange(this.value)">
+                <option value="super_admin" ${user.role === 'super_admin' ? 'selected' : ''}>👑 Super Admin</option>
+                <option value="finance" ${user.role === 'finance' ? 'selected' : ''}>💼 Finance & Accounts</option>
+                <option value="billing_staff" ${user.role === 'billing_staff' ? 'selected' : ''}>🧾 Billing Staff</option>
+                <option value="auditor" ${user.role === 'auditor' ? 'selected' : ''}>📜 Auditor</option>
+                <option value="vendor" ${user.role === 'vendor' ? 'selected' : ''}>🏪 Vendor Stall</option>
+                <option value="staff" ${(!['super_admin','finance','billing_staff','auditor','vendor'].includes(user.role)) ? 'selected' : ''}>🛠️ Custom Scoped Staff</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Section: Granular Permissions Checklist -->
+          <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <label class="form-label" style="margin: 0; font-weight: 700; font-size: 0.9rem; color: var(--notion-ink);">
+                🛡️ Assigned Scopes Checklist
+              </label>
+              <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-xs btn-outline" onclick="toggleAllEditScopes(true)">Select All</button>
+                <button type="button" class="btn btn-xs btn-outline" onclick="toggleAllEditScopes(false)">Clear All</button>
+              </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-height: 240px; overflow-y: auto; padding: 4px;">
+              ${scopes.map(s => {
+                const checked = user.role === 'super_admin' || userScopes.includes(s.id);
+                return `
+                  <label style="display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; background: #fff; border: 1px solid var(--notion-hairline); border-radius: 6px; cursor: pointer;">
+                    <input type="checkbox" name="editUserScopeCheckbox" value="${s.id}" ${checked ? 'checked' : ''} style="margin-top: 3px; accent-color: var(--notion-primary);" />
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.82rem; color: var(--notion-ink);">${escapeHtml(s.label)}</div>
+                      <div style="font-size: 0.72rem; color: var(--notion-secondary); line-height: 1.3;">${escapeHtml(s.desc)}</div>
+                    </div>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+        </div>
+
+        <div class="modal-footer" style="background: var(--notion-surface-warm); border-top: 1px solid var(--notion-hairline); padding: 14px 24px; display: flex; justify-content: space-between; align-items: center;">
+          <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  container.classList.remove('hidden');
+}
+
+function toggleAllEditScopes(check) {
+  document.querySelectorAll('input[name="editUserScopeCheckbox"]').forEach(cb => {
+    cb.checked = check;
+  });
+}
+
+function handleEditRoleChange(role) {
+  if (role === 'super_admin') {
+    toggleAllEditScopes(true);
+  }
+}
+
+async function submitEditUser(e, userId) {
+  e.preventDefault();
+  const name = document.getElementById('editUserName').value.trim();
+  const designation = document.getElementById('editUserDesignation').value.trim();
+  const role = document.getElementById('editUserRole').value;
+  const checkedScopes = Array.from(document.querySelectorAll('input[name="editUserScopeCheckbox"]:checked')).map(cb => cb.value);
+
+  try {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        designation,
+        role,
+        scopes: checkedScopes
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || 'Failed to update user');
+      return;
+    }
+
+    toast('User permissions and designation updated successfully!', 'success');
+    closeModal();
+
+    // If current user was edited, update local state
+    if (state.currentUser && state.currentUser.id === userId) {
+      state.currentUser = data.user;
+      try {
+        localStorage.setItem('hp_session_user', JSON.stringify(data.user));
+      } catch (e) {}
+      updateUserChipUI();
+      updateNavigationVisibility();
+    }
+
+    await loadAndRenderTeamTable();
+  } catch (err) {
+    toast('Error updating user: ' + err.message, 'error');
+  }
+}
+
+// -------------------------------------------------------------
+// Change / Reset Password Modal
+// -------------------------------------------------------------
+function openChangePasswordModal(userId) {
+  const user = (state.teamUsers || []).find(u => u.id === userId);
+  if (!user) {
+    toast('User not found', 'error');
+    return;
+  }
+
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  const randNum = Math.floor(1000 + Math.random() * 9000);
+  const defaultPass = `HalfPe@${randNum}`;
+
+  container.innerHTML = `
+    <div class="modal-dialog" style="max-width: 440px;">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">🔑 Set New Password</h3>
+          <p style="font-size: 0.8rem; color: var(--notion-secondary); margin-top: 2px;">
+            User: <strong>${escapeHtml(user.name)}</strong> (${escapeHtml(user.email)})
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <form onsubmit="submitChangePassword(event, '${user.id}')">
+        <div class="modal-body" style="padding: 20px 24px;">
+          <div class="form-group">
+            <label class="form-label required" style="display: flex; justify-content: space-between;">
+              <span>New Password</span>
+              <span style="font-size: 0.72rem; color: var(--notion-primary); cursor: pointer;" onclick="document.getElementById('resetNewPassword').value = 'HalfPe@' + Math.floor(1000 + Math.random() * 9000)">🎲 Random</span>
+            </label>
+            <input type="text" id="resetNewPassword" class="form-input" value="${defaultPass}" required style="font-family: var(--font-mono); font-size: 1rem;" />
+            <span class="form-helper">The new password will be immediately active for this user account.</span>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 14px 24px; display: flex; justify-content: space-between;">
+          <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update Password Now</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  container.classList.remove('hidden');
+}
+
+async function submitChangePassword(e, userId) {
+  e.preventDefault();
+  const password = document.getElementById('resetNewPassword').value.trim();
+  if (!password) {
+    alert('Please provide a password.');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || 'Failed to update password');
+      return;
+    }
+
+    toast('Password changed! New credentials are live immediately.', 'success');
+    closeModal();
+    await loadAndRenderTeamTable();
+  } catch (err) {
+    toast('Error updating password: ' + err.message, 'error');
+  }
+}
+
+// -------------------------------------------------------------
+// Toggle User Active / Suspended
+// -------------------------------------------------------------
+async function toggleUserActiveStatus(userId, currentActive) {
+  if (userId === 'usr_1') {
+    alert('Primary Super Admin Krishna cannot be suspended.');
+    return;
+  }
+  if (state.currentUser && state.currentUser.id === userId) {
+    alert('You cannot suspend your own active login session.');
+    return;
+  }
+
+  const action = currentActive ? 'suspend' : 'activate';
+  if (!confirm(`Are you sure you want to ${action} this user account?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/users/${userId}/toggle-status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !currentActive })
+    });
+
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || `Failed to ${action} user`);
+      return;
+    }
+
+    toast(`User account ${!currentActive ? 'activated' : 'suspended'} successfully!`, 'success');
+    await loadAndRenderTeamTable();
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+function copyTextToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast('✓ Credentials copied to clipboard!', 'success');
+    }).catch(() => {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    toast('✓ Credentials copied to clipboard!', 'success');
+  } catch (e) {
+    toast('Failed to auto-copy. Please copy manually.', 'error');
+  }
+  document.body.removeChild(ta);
+}
 
 // -------------------------------------------------------------
 // Toast Notifications

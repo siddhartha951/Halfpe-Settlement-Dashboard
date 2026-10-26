@@ -107,27 +107,24 @@ let currentUser = (store.data && store.data.users && store.data.users[0]) || {
   role: 'super_admin'
 };
 
-const USER_CREDENTIALS = [
-  { id: 'usr_1', email: 'admin@halfpe.com', password: 'admin@2026', name: 'Krishna (Super Admin)', role: 'super_admin', roleLabel: 'Super Admin', desc: 'Full event settlement, edit & void authorization' },
-  { id: 'usr_2', email: 'billing@halfpe.com', password: 'billing@2026', name: 'Ravi Teja (Billing Counter)', role: 'billing_staff', roleLabel: 'Billing Counter Staff', desc: 'Counter POS entry, cash collection & refund requests' },
-  { id: 'usr_3', email: 'finance@halfpe.com', password: 'finance@2026', name: 'Ananya Rao (Finance & Accounts)', role: 'finance', roleLabel: 'Finance & Accounts', desc: 'Payouts, bank settlement, daily lock audits' },
-  { id: 'usr_4', email: 'viewer@halfpe.com', password: 'viewer@2026', name: 'Suresh Kumar (Audit Viewer)', role: 'viewer', roleLabel: 'External Auditor', desc: 'Read-only financial view, masked PII phones' },
-  { id: 'usr_5', email: 'vendor@halfpe.com', password: 'vendor@2026', name: 'Profit Shoe Co (Vendor User)', role: 'vendor', vendorId: 'v_PSC', roleLabel: 'Vendor User', desc: 'Vendor portal - isolated view of own orders & payouts' }
-];
-
-// Secure account metadata endpoint - NO PASSWORDS EXPOSED
+// Secure account metadata endpoint - reads active users from store dynamically
 app.get('/api/auth/credentials', (req, res) => {
   res.json({
-    accounts: USER_CREDENTIALS.map(u => ({
+    accounts: store.getUsers().filter(u => u.active !== false).map(u => ({
       id: u.id,
       email: u.email,
       name: u.name,
+      designation: u.designation || 'Staff',
       role: u.role,
       vendorId: u.vendorId || null,
-      roleLabel: u.roleLabel,
-      desc: u.desc
+      roleLabel: u.designation || (u.role === 'super_admin' ? 'Super Admin' : u.role),
+      desc: (u.scopes || []).slice(0, 3).map(s => s.replace(/_/g, ' ')).join(', ')
     }))
   });
+});
+
+app.get('/api/auth/scopes', (req, res) => {
+  res.json({ scopes: store.ALL_SCOPES || [] });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -136,35 +133,30 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  const matched = USER_CREDENTIALS.find(u => 
-    u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password.trim()
-  );
+  const user = store.getUserByEmail(email);
 
-  if (!matched) {
+  if (!user || user.password !== password.trim()) {
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
-  const storeUser = store.data.users.find(u => u.id === matched.id) || {
-    id: matched.id,
-    name: matched.name,
-    email: matched.email,
-    role: matched.role,
-    vendorId: matched.vendorId || null
-  };
-  if (matched.vendorId) storeUser.vendorId = matched.vendorId;
+  if (user.active === false) {
+    return res.status(403).json({ error: 'Your account has been suspended. Please contact Krishna (Super Admin).' });
+  }
 
-  currentUser = storeUser;
+  currentUser = user;
   res.json({
     success: true,
     user: {
-      id: storeUser.id,
-      name: storeUser.name,
-      email: storeUser.email,
-      role: storeUser.role,
-      vendorId: storeUser.vendorId || null
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      designation: user.designation || 'Staff',
+      role: user.role,
+      vendorId: user.vendorId || null,
+      scopes: user.scopes || []
     },
-    token: Buffer.from(`${storeUser.id}:${Date.now()}`).toString('base64'),
-    message: `Welcome back, ${storeUser.name}!`
+    token: Buffer.from(`${user.id}:${Date.now()}`).toString('base64'),
+    message: `Welcome back, ${user.name}!`
   });
 });
 
@@ -176,19 +168,121 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/users', (req, res) => {
   res.json({
     currentUser,
-    users: store.data.users.map(u => ({
+    users: store.getUsers().map(u => ({
       id: u.id,
       name: u.name,
       email: u.email,
-      role: u.role
+      designation: u.designation || 'Staff',
+      role: u.role,
+      scopes: u.scopes || [],
+      active: u.active !== false
     }))
   });
 });
 
+// -------------------------------------------------------------
+// Team & Access Management Endpoints (Super Admin Krishna Master)
+// -------------------------------------------------------------
+app.get('/api/users', (req, res) => {
+  if (currentUser.role !== 'super_admin' && !(currentUser.scopes && currentUser.scopes.includes('user_management'))) {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin Krishna can manage team access.' });
+  }
+
+  const users = store.getUsers().map(u => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    designation: u.designation || (u.role === 'super_admin' ? 'Super Admin' : 'Staff'),
+    role: u.role,
+    vendorId: u.vendorId || null,
+    scopes: u.scopes || [],
+    active: u.active !== false,
+    createdAt: u.createdAt || null,
+    updatedAt: u.updatedAt || null
+  }));
+
+  res.json(users);
+});
+
+app.post('/api/users', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin Krishna can create users and share access.' });
+  }
+
+  try {
+    const newUser = store.addUser(req.body, currentUser);
+    res.status(201).json({
+      success: true,
+      message: `Access granted for ${newUser.name} (${newUser.designation})!`,
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        designation: newUser.designation,
+        role: newUser.role,
+        vendorId: newUser.vendorId,
+        scopes: newUser.scopes,
+        active: newUser.active
+      }
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can modify user credentials and scopes.' });
+  }
+
+  try {
+    const updated = store.updateUser(req.params.id, req.body, currentUser);
+    res.json({
+      success: true,
+      message: `Access updated for ${updated.name}!`,
+      user: {
+        id: updated.id,
+        name: updated.name,
+        email: updated.email,
+        designation: updated.designation,
+        role: updated.role,
+        vendorId: updated.vendorId,
+        scopes: updated.scopes,
+        active: updated.active
+      }
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/users/:id/toggle-status', (req, res) => {
+  if (currentUser.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can modify user access status.' });
+  }
+
+  const { active } = req.body;
+  try {
+    const updated = store.toggleUserStatus(req.params.id, active, currentUser);
+    res.json({
+      success: true,
+      message: updated.active ? `User ${updated.name} activated.` : `User ${updated.name} access suspended.`,
+      user: {
+        id: updated.id,
+        name: updated.name,
+        active: updated.active
+      }
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/api/auth/switch', (req, res) => {
   const { userId } = req.body;
-  const user = store.data.users.find(u => u.id === userId);
+  const user = store.getUserById(userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.active === false) return res.status(403).json({ error: 'Account is suspended' });
   currentUser = user;
   res.json({
     success: true,
@@ -196,7 +290,9 @@ app.post('/api/auth/switch', (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role
+      designation: user.designation || 'Staff',
+      role: user.role,
+      scopes: user.scopes || []
     }
   });
 });

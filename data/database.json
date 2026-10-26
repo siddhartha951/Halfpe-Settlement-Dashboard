@@ -14,25 +14,101 @@
       "id": "usr_1",
       "name": "Krishna (Super Admin)",
       "email": "admin@halfpe.com",
-      "role": "super_admin"
+      "role": "super_admin",
+      "password": "admin@2026",
+      "designation": "Founder & Super Admin",
+      "scopes": [
+        "overall_settlement",
+        "vendor_wise",
+        "orders_management",
+        "orders_approval",
+        "vendor_management",
+        "payout_management",
+        "audit_log",
+        "user_management",
+        "export_reports",
+        "simulate_orders"
+      ],
+      "active": true
     },
     {
       "id": "usr_2",
       "name": "Ravi Teja (Billing Counter)",
       "email": "billing@halfpe.com",
-      "role": "billing_staff"
+      "role": "billing_staff",
+      "password": "billing@2026",
+      "designation": "Billing Counter Operator",
+      "scopes": [
+        "orders_management",
+        "simulate_orders"
+      ],
+      "active": true
     },
     {
       "id": "usr_3",
       "name": "Ananya Rao (Finance & Accounts)",
       "email": "finance@halfpe.com",
-      "role": "finance"
+      "role": "finance",
+      "password": "finance@2026",
+      "designation": "Head of Finance & Reconciliation",
+      "scopes": [
+        "overall_settlement",
+        "vendor_wise",
+        "payout_management",
+        "audit_log",
+        "export_reports"
+      ],
+      "active": true
     },
     {
       "id": "usr_4",
       "name": "Suresh Kumar (Audit Viewer)",
       "email": "viewer@halfpe.com",
-      "role": "viewer"
+      "role": "viewer",
+      "password": "viewer@2026",
+      "designation": "External Financial Auditor",
+      "scopes": [
+        "overall_settlement",
+        "vendor_wise",
+        "audit_log",
+        "export_reports"
+      ],
+      "active": true
+    },
+    {
+      "id": "usr_5",
+      "name": "Profit Shoe Co (Vendor User)",
+      "email": "vendor@halfpe.com",
+      "password": "vendor@2026",
+      "designation": "Vendor Representative (Stall 01)",
+      "role": "vendor",
+      "vendorId": "v_PSC",
+      "scopes": [
+        "vendor_wise"
+      ],
+      "active": true
+    },
+    {
+      "id": "usr_301873",
+      "name": "Siddhartha (Operations & Tech)",
+      "email": "siddharth@halfpe.com",
+      "password": "Siddharth@2026",
+      "designation": "VP of Technology & Operations",
+      "role": "staff",
+      "vendorId": null,
+      "scopes": [
+        "overall_settlement",
+        "vendor_wise",
+        "orders_management",
+        "orders_approval",
+        "export_reports",
+        "simulate_orders",
+        "user_management"
+      ],
+      "active": true,
+      "createdBy": "Krishna (Super Admin)",
+      "createdAt": "2026-10-26T19:35:01.873Z",
+      "updatedAt": "2026-10-26T19:35:01.912Z"
     }
   ],
   "vendors": [
@@ -39424,6 +39500,30 @@
     }
   ],
   "auditLog": [
+    {
+      "id": "aud_1793043301912_271",
+      "timestamp": "2026-10-26T19:35:01.912Z",
+      "user": "Krishna (Super Admin)",
+      "action": "USER_UPDATED",
+      "entity": "users",
+      "entityId": "usr_301873",
+      "field": "details",
+      "oldValue": "Siddhartha (Operations & Tech) (siddharth@halfpe.com) - Head of Operations & Technology [staff]",
+      "newValue": "Siddhartha (Operations & Tech) (siddharth@halfpe.com) - VP of Technology & Operations [staff]",
+      "reason": "User profile & scopes updated"
+    },
+    {
+      "id": "aud_1793043301874_836",
+      "timestamp": "2026-10-26T19:35:01.874Z",
+      "user": "Krishna (Super Admin)",
+      "action": "USER_CREATED",
+      "entity": "users",
+      "entityId": "usr_301873",
+      "field": "credentials",
+      "oldValue": "",
+      "newValue": "Siddhartha (Operations & Tech) (siddharth@halfpe.com) - Head of Operations & Technology [staff]",
+      "reason": "Created user account with 5 access scopes"
+    },
     {
       "id": "aud_1792783330640_890",
       "timestamp": "2026-10-23T19:22:10.755Z",

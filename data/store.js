@@ -15,17 +15,78 @@ const defaultEvent = {
   endDate: '2026-10-11'
 };
 
+const ALL_SCOPES = [
+  { id: 'overall_settlement', label: '📊 Overall Settlement', desc: 'View consolidated event sales, fee, net payable & daily locks' },
+  { id: 'vendor_wise', label: '🏢 Vendor-wise Dashboard', desc: 'View vendor stall ledger, returns, bills, and performance' },
+  { id: 'orders_management', label: '📦 Orders Management', desc: 'Inspect staged POS bills awaiting processing' },
+  { id: 'orders_approval', label: '⚡ Push to Shopify Approval', desc: 'Manually or bulk approve orders into official Shopify store' },
+  { id: 'vendor_management', label: '🏬 Vendor Management', desc: 'Register new vendors, assign/change stalls, or deactivate' },
+  { id: 'payout_management', label: '💸 Payout Disbursements', desc: 'Disburse order-linked settlements with partial balance tracking' },
+  { id: 'audit_log', label: '📜 System Audit Trail', desc: 'Inspect immutable logs of order edits, approvals, and payouts' },
+  { id: 'user_management', label: '👥 Team & Access Control', desc: 'Create user IDs, set passwords, assign designations & scopes' },
+  { id: 'export_reports', label: '📥 Export Reports', desc: 'Download CSV / Excel settlement data & exception logs' },
+  { id: 'simulate_orders', label: '🧪 POS Simulation Testing', desc: 'Simulate new POS counter bills for testing' }
+];
+
 const defaultUsers = [
-  { id: 'usr_1', name: 'Krishna (Super Admin)', email: 'admin@halfpe.com', role: 'super_admin' },
-  { id: 'usr_2', name: 'Ravi Teja (Billing Counter)', email: 'billing@halfpe.com', role: 'billing_staff' },
-  { id: 'usr_3', name: 'Ananya Rao (Finance & Accounts)', email: 'finance@halfpe.com', role: 'finance' },
-  { id: 'usr_4', name: 'Suresh Kumar (Audit Viewer)', email: 'viewer@halfpe.com', role: 'viewer' }
+  {
+    id: 'usr_1',
+    name: 'Krishna (Super Admin)',
+    email: 'admin@halfpe.com',
+    password: 'admin@2026',
+    designation: 'Founder & Super Admin',
+    role: 'super_admin',
+    scopes: ALL_SCOPES.map(s => s.id),
+    active: true
+  },
+  {
+    id: 'usr_2',
+    name: 'Ravi Teja (Billing Counter)',
+    email: 'billing@halfpe.com',
+    password: 'billing@2026',
+    designation: 'Billing Counter Operator',
+    role: 'billing_staff',
+    scopes: ['orders_management', 'simulate_orders'],
+    active: true
+  },
+  {
+    id: 'usr_3',
+    name: 'Ananya Rao (Finance & Accounts)',
+    email: 'finance@halfpe.com',
+    password: 'finance@2026',
+    designation: 'Head of Finance & Reconciliation',
+    role: 'finance',
+    scopes: ['overall_settlement', 'vendor_wise', 'payout_management', 'audit_log', 'export_reports'],
+    active: true
+  },
+  {
+    id: 'usr_4',
+    name: 'Suresh Kumar (Audit Viewer)',
+    email: 'viewer@halfpe.com',
+    password: 'viewer@2026',
+    designation: 'External Financial Auditor',
+    role: 'viewer',
+    scopes: ['overall_settlement', 'vendor_wise', 'audit_log', 'export_reports'],
+    active: true
+  },
+  {
+    id: 'usr_5',
+    name: 'Profit Shoe Co (Vendor User)',
+    email: 'vendor@halfpe.com',
+    password: 'vendor@2026',
+    designation: 'Vendor Representative (Stall 01)',
+    role: 'vendor',
+    vendorId: 'v_PSC',
+    scopes: ['vendor_wise'],
+    active: true
+  }
 ];
 
 class Store {
   constructor() {
     this.data = this.load();
     this.initRealVendors();
+    this.initUsers();
   }
 
   load() {
@@ -120,6 +181,40 @@ class Store {
       }
 
       this.save();
+    }
+  }
+
+  /**
+   * Initializes users, credentials, designations, and permissions
+   */
+  initUsers() {
+    if (!this.data.users || this.data.users.length === 0) {
+      this.data.users = defaultUsers;
+    }
+
+    const seedMap = {};
+    defaultUsers.forEach(u => { seedMap[u.email.toLowerCase()] = u; });
+
+    // Ensure all users have password, designation, scopes, and active flag
+    this.data.users.forEach(u => {
+      const seed = seedMap[u.email.toLowerCase()];
+      if (seed) {
+        if (!u.password) u.password = seed.password;
+        if (!u.designation) u.designation = seed.designation;
+        if (!u.scopes || u.scopes.length === 0) u.scopes = seed.scopes;
+        if (seed.vendorId && !u.vendorId) u.vendorId = seed.vendorId;
+      }
+      if (u.active === undefined) u.active = true;
+      if (!u.designation) u.designation = u.role === 'super_admin' ? 'Super Admin' : (u.role === 'vendor' ? 'Vendor Representative' : 'Staff');
+      if (!u.scopes || u.scopes.length === 0) {
+        u.scopes = u.role === 'super_admin' ? ALL_SCOPES.map(s => s.id) : ['overall_settlement', 'vendor_wise'];
+      }
+    });
+
+    // Make sure vendor@halfpe.com exists
+    if (!this.data.users.some(u => u.email.toLowerCase() === 'vendor@halfpe.com')) {
+      const vendorUser = defaultUsers.find(u => u.email === 'vendor@halfpe.com');
+      if (vendorUser) this.data.users.push(vendorUser);
     }
   }
 
@@ -877,6 +972,149 @@ class Store {
     this.save();
     return vendor;
   }
+
+  // -------------------------------------------------------------
+  // User Management & RBAC Scopes (Krishna's Super Admin Master)
+  // -------------------------------------------------------------
+  getUsers() {
+    return this.data.users || [];
+  }
+
+  getUserById(id) {
+    return (this.data.users || []).find(u => u.id === id);
+  }
+
+  getUserByEmail(email) {
+    if (!email) return null;
+    return (this.data.users || []).find(u => u.email.toLowerCase() === email.trim().toLowerCase());
+  }
+
+  addUser(userData, adminUser = 'Super Admin') {
+    const email = (userData.email || '').trim().toLowerCase();
+    if (!email) throw new Error('Email is required.');
+    if (this.getUserByEmail(email)) {
+      throw new Error(`User with email "${email}" already exists.`);
+    }
+    const name = (userData.name || '').trim();
+    if (!name) throw new Error('Name is required.');
+    const password = (userData.password || '').trim();
+    if (!password) throw new Error('Password is required.');
+
+    const designation = (userData.designation || 'Staff Member').trim();
+    const role = userData.role || 'custom';
+    const scopes = Array.isArray(userData.scopes) && userData.scopes.length > 0
+      ? userData.scopes
+      : (role === 'super_admin' ? ALL_SCOPES.map(s => s.id) : ['overall_settlement', 'vendor_wise']);
+    
+    const newUser = {
+      id: 'usr_' + Date.now().toString().slice(-6),
+      name,
+      email,
+      password,
+      designation,
+      role,
+      vendorId: userData.vendorId || null,
+      scopes,
+      active: true,
+      createdBy: typeof adminUser === 'string' ? adminUser : (adminUser?.name || 'Super Admin'),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (!this.data.users) this.data.users = [];
+    this.data.users.push(newUser);
+
+    this.logAudit(
+      typeof adminUser === 'string' ? adminUser : (adminUser?.name || 'Super Admin'),
+      'USER_CREATED',
+      'users',
+      newUser.id,
+      'credentials',
+      null,
+      `${newUser.name} (${newUser.email}) - ${newUser.designation} [${newUser.role}]`,
+      `Created user account with ${scopes.length} access scopes`
+    );
+
+    this.save();
+    return newUser;
+  }
+
+  updateUser(id, updates = {}, adminUser = 'Super Admin') {
+    const user = this.getUserById(id);
+    if (!user) throw new Error('User not found.');
+
+    const oldSnapshot = `${user.name} (${user.email}) - ${user.designation} [${user.role}]`;
+
+    if (updates.name) user.name = updates.name.trim();
+    if (updates.email) {
+      const newEmail = updates.email.trim().toLowerCase();
+      const existing = this.getUserByEmail(newEmail);
+      if (existing && existing.id !== user.id) {
+        throw new Error(`Email "${newEmail}" is already in use by another user.`);
+      }
+      user.email = newEmail;
+    }
+    if (updates.password && updates.password.trim()) {
+      user.password = updates.password.trim();
+    }
+    if (updates.designation !== undefined) {
+      user.designation = updates.designation.trim();
+    }
+    if (updates.role !== undefined) {
+      user.role = updates.role;
+    }
+    if (updates.vendorId !== undefined) {
+      user.vendorId = updates.vendorId || null;
+    }
+    if (Array.isArray(updates.scopes)) {
+      user.scopes = updates.scopes;
+    }
+    if (updates.active !== undefined) {
+      user.active = !!updates.active;
+    }
+    user.updatedAt = new Date().toISOString();
+
+    this.logAudit(
+      typeof adminUser === 'string' ? adminUser : (adminUser?.name || 'Super Admin'),
+      'USER_UPDATED',
+      'users',
+      user.id,
+      'details',
+      oldSnapshot,
+      `${user.name} (${user.email}) - ${user.designation} [${user.role}]`,
+      updates.password ? 'User details and password updated' : 'User profile & scopes updated'
+    );
+
+    this.save();
+    return user;
+  }
+
+  toggleUserStatus(id, active, adminUser = 'Super Admin') {
+    const user = this.getUserById(id);
+    if (!user) throw new Error('User not found.');
+    if (user.role === 'super_admin') {
+      throw new Error('Super Admin account cannot be deactivated.');
+    }
+
+    user.active = !!active;
+    user.updatedAt = new Date().toISOString();
+
+    this.logAudit(
+      typeof adminUser === 'string' ? adminUser : (adminUser?.name || 'Super Admin'),
+      active ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+      'users',
+      user.id,
+      'active',
+      String(!active),
+      String(active),
+      active ? 'User access restored' : 'User access suspended'
+    );
+
+    this.save();
+    return user;
+  }
 }
 
-module.exports = new Store();
+const storeInstance = new Store();
+storeInstance.ALL_SCOPES = ALL_SCOPES;
+module.exports = storeInstance;
