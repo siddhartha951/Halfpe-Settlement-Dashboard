@@ -4598,12 +4598,17 @@ async function fetchTeamScopes() {
 
 async function fetchTeamUsers() {
   try {
-    const res = await fetch('/api/users');
+    const adminU = state.currentUser || { id: 'usr_1', email: 'admin@halfpe.com' };
+    const res = await fetch('/api/users', {
+      headers: {
+        'x-user-id': adminU.id || 'usr_1',
+        'x-user-email': adminU.email || 'admin@halfpe.com'
+      }
+    });
     const data = await res.json();
-    if (data.users && Array.isArray(data.users)) {
-      state.teamUsers = data.users;
-      return data.users;
-    }
+    const list = Array.isArray(data) ? data : (data && data.users && Array.isArray(data.users) ? data.users : []);
+    state.teamUsers = list;
+    return list;
   } catch (e) {
     console.error('Failed to load team users:', e);
   }
