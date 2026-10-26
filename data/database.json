@@ -109,6 +109,56 @@
       "createdBy": "Krishna (Super Admin)",
       "createdAt": "2026-10-26T19:35:01.873Z",
       "updatedAt": "2026-10-26T19:35:01.912Z"
+    },
+    {
+      "id": "usr_947931",
+      "name": "Test No Headers",
+      "email": "no_headers_1793051947836@halfpe.com",
+      "password": "Pass@1234",
+      "designation": "Tester",
+      "role": "staff",
+      "vendorId": null,
+      "scopes": [
+        "overall_settlement"
+      ],
+      "active": true,
+      "createdBy": "Krishna (Super Admin)",
+      "createdAt": "2026-10-26T21:59:07.931Z",
+      "updatedAt": "2026-10-26T21:59:07.932Z"
+    },
+    {
+      "id": "usr_947971",
+      "name": "Test Admin Body",
+      "email": "admin_body_1793051947964@halfpe.com",
+      "password": "Pass@1234",
+      "designation": "Tester 2",
+      "role": "staff",
+      "vendorId": null,
+      "scopes": [
+        "overall_settlement",
+        "vendor_wise"
+      ],
+      "active": true,
+      "createdBy": "Krishna (Super Admin)",
+      "createdAt": "2026-10-26T21:59:07.971Z",
+      "updatedAt": "2026-10-26T21:59:07.971Z"
+    },
+    {
+      "id": "usr_948002",
+      "name": "Test Header Usr",
+      "email": "header_usr_1793051947993@halfpe.com",
+      "password": "Pass@1234",
+      "designation": "Tester 3",
+      "role": "staff",
+      "vendorId": null,
+      "scopes": [
+        "overall_settlement",
+        "orders_management"
+      ],
+      "active": true,
+      "createdBy": "Krishna (Super Admin)",
+      "createdAt": "2026-10-26T21:59:08.002Z",
+      "updatedAt": "2026-10-26T21:59:08.002Z"
     }
   ],
   "vendors": [
@@ -39500,6 +39550,42 @@
     }
   ],
   "auditLog": [
+    {
+      "id": "aud_1793051948002_568",
+      "timestamp": "2026-10-26T21:59:08.002Z",
+      "user": "Krishna (Super Admin)",
+      "action": "USER_CREATED",
+      "entity": "users",
+      "entityId": "usr_948002",
+      "field": "credentials",
+      "oldValue": "",
+      "newValue": "Test Header Usr (header_usr_1793051947993@halfpe.com) - Tester 3 [staff]",
+      "reason": "Created user account with 2 access scopes"
+    },
+    {
+      "id": "aud_1793051947971_183",
+      "timestamp": "2026-10-26T21:59:07.971Z",
+      "user": "Krishna (Super Admin)",
+      "action": "USER_CREATED",
+      "entity": "users",
+      "entityId": "usr_947971",
+      "field": "credentials",
+      "oldValue": "",
+      "newValue": "Test Admin Body (admin_body_1793051947964@halfpe.com) - Tester 2 [staff]",
+      "reason": "Created user account with 2 access scopes"
+    },
+    {
+      "id": "aud_1793051947932_109",
+      "timestamp": "2026-10-26T21:59:07.932Z",
+      "user": "Krishna (Super Admin)",
+      "action": "USER_CREATED",
+      "entity": "users",
+      "entityId": "usr_947931",
+      "field": "credentials",
+      "oldValue": "",
+      "newValue": "Test No Headers (no_headers_1793051947836@halfpe.com) - Tester [staff]",
+      "reason": "Created user account with 1 access scopes"
+    },
     {
       "id": "aud_1793043301912_271",
       "timestamp": "2026-10-26T19:35:01.912Z",

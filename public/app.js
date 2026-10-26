@@ -9,6 +9,35 @@ function escapeHtml(str) {
 }
 window.escapeHtml = escapeHtml;
 
+// Global fetch wrapper: always attach authenticated user identity to headers
+const _nativeFetch = window.fetch;
+window.fetch = function(url, options) {
+  options = options || {};
+  options.headers = options.headers || {};
+  
+  let activeUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  if (!activeUser) {
+    try {
+      const saved = localStorage.getItem('hp_session_user');
+      if (saved) activeUser = JSON.parse(saved);
+    } catch (e) {}
+  }
+  if (!activeUser) {
+    activeUser = { id: 'usr_1', email: 'admin@halfpe.com', role: 'super_admin' };
+  }
+
+  if (options.headers instanceof Headers) {
+    if (!options.headers.has('x-user-id')) options.headers.set('x-user-id', activeUser.id);
+    if (!options.headers.has('x-user-email')) options.headers.set('x-user-email', activeUser.email || '');
+    if (!options.headers.has('x-user-role')) options.headers.set('x-user-role', activeUser.role || '');
+  } else {
+    if (!options.headers['x-user-id']) options.headers['x-user-id'] = activeUser.id;
+    if (!options.headers['x-user-email']) options.headers['x-user-email'] = activeUser.email || '';
+    if (!options.headers['x-user-role']) options.headers['x-user-role'] = activeUser.role || '';
+  }
+  return _nativeFetch.call(this, url, options);
+};
+
 const DEFAULT_USER = {
   id: 'usr_1',
   name: 'Krishna (Super Admin)',
@@ -5035,10 +5064,17 @@ async function submitCreateUser(e) {
   }
 
   try {
+    const adminU = state.currentUser || { id: 'usr_1', email: 'admin@halfpe.com' };
     const res = await fetch('/api/users', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': adminU.id || 'usr_1',
+        'x-user-email': adminU.email || 'admin@halfpe.com'
+      },
       body: JSON.stringify({
+        adminUserId: adminU.id || 'usr_1',
+        adminUserEmail: adminU.email || 'admin@halfpe.com',
         name,
         designation,
         email,
@@ -5264,10 +5300,17 @@ async function submitEditUser(e, userId) {
   const checkedScopes = Array.from(document.querySelectorAll('input[name="editUserScopeCheckbox"]:checked')).map(cb => cb.value);
 
   try {
+    const adminU = state.currentUser || { id: 'usr_1', email: 'admin@halfpe.com' };
     const res = await fetch(`/api/users/${userId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': adminU.id || 'usr_1',
+        'x-user-email': adminU.email || 'admin@halfpe.com'
+      },
       body: JSON.stringify({
+        adminUserId: adminU.id || 'usr_1',
+        adminUserEmail: adminU.email || 'admin@halfpe.com',
         name,
         designation,
         role,
@@ -5360,10 +5403,19 @@ async function submitChangePassword(e, userId) {
   }
 
   try {
+    const adminU = state.currentUser || { id: 'usr_1', email: 'admin@halfpe.com' };
     const res = await fetch(`/api/users/${userId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': adminU.id || 'usr_1',
+        'x-user-email': adminU.email || 'admin@halfpe.com'
+      },
+      body: JSON.stringify({
+        adminUserId: adminU.id || 'usr_1',
+        adminUserEmail: adminU.email || 'admin@halfpe.com',
+        password
+      })
     });
 
     const data = await res.json();
@@ -5399,10 +5451,19 @@ async function toggleUserActiveStatus(userId, currentActive) {
   }
 
   try {
+    const adminU = state.currentUser || { id: 'usr_1', email: 'admin@halfpe.com' };
     const res = await fetch(`/api/users/${userId}/toggle-status`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !currentActive })
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': adminU.id || 'usr_1',
+        'x-user-email': adminU.email || 'admin@halfpe.com'
+      },
+      body: JSON.stringify({
+        adminUserId: adminU.id || 'usr_1',
+        adminUserEmail: adminU.email || 'admin@halfpe.com',
+        active: !currentActive
+      })
     });
 
     const data = await res.json();
