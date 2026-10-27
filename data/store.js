@@ -219,18 +219,66 @@ class Store {
   }
 
   /**
-   * Syncs Shopify bill rows and returns into store
+   * Syncs Shopify bill rows and returns into store with zero-loss guarantee for internal orders.
    */
   syncShopifyData(billRows, returns, syncStats = {}) {
-    // Preserve manual & edited rows
-    const manualRows = (this.data.billRows || []).filter(r => r.source === 'Manual' || r.source === 'Edited');
-    
-    // Replace auto-synced Shopify rows
-    this.data.billRows = [...manualRows, ...billRows];
+    // 1. Strictly preserve all manual, edited, internal counter orders, and webhook rows
+    const preservedRows = (this.data.billRows || []).filter(r => 
+      r.source === 'Manual' || 
+      r.source === 'Edited' || 
+      r.source === 'Internal Order Flow' ||
+      r.source === 'Shopify Webhook'
+    );
 
-    // Deduplicate by id just in case
+    // 2. Track all Shopify Order IDs and Bill Numbers already recorded internally or pushed
+    const existingShopifyIds = new Set(
+      preservedRows
+        .filter(r => r.shopifyOrderId)
+        .map(r => String(r.shopifyOrderId))
+    );
+    const existingBillNos = new Set(
+      preservedRows
+        .filter(r => r.billCopyNo)
+        .map(r => String(r.billCopyNo).trim().toUpperCase())
+    );
+
+    // 3. Filter incoming Shopify rows: only add if not already captured as an internal order
+    const incomingUniqueShopifyRows = [];
+    for (const row of billRows) {
+      const sId = row.shopifyOrderId ? String(row.shopifyOrderId) : null;
+      const bNo = row.billCopyNo ? String(row.billCopyNo).trim().toUpperCase() : null;
+
+      // If an existing internal order has this shopifyOrderId, update its status without duplicating
+      if (sId && existingShopifyIds.has(sId)) {
+        const match = preservedRows.find(pr => String(pr.shopifyOrderId) === sId);
+        if (match && row.status) {
+          match.status = row.status;
+          if (row.isVoid !== undefined) match.isVoid = row.isVoid;
+        }
+        continue;
+      }
+
+      // If an existing internal bill has the exact same Bill Copy Number, link the shopifyOrderId
+      if (bNo && existingBillNos.has(bNo)) {
+        const match = preservedRows.find(pr => String(pr.billCopyNo).trim().toUpperCase() === bNo);
+        if (match) {
+          if (sId && !match.shopifyOrderId) match.shopifyOrderId = sId;
+          match.isApproved = true;
+          match.status = 'Paid';
+        }
+        continue;
+      }
+
+      incomingUniqueShopifyRows.push(row);
+    }
+
+    // 4. Combine preserved rows with brand new external Shopify orders
+    this.data.billRows = [...preservedRows, ...incomingUniqueShopifyRows];
+
+    // Deduplicate strictly by ID
     const seenIds = new Set();
     this.data.billRows = this.data.billRows.filter(r => {
+      if (!r || !r.id) return false;
       if (seenIds.has(r.id)) return false;
       seenIds.add(r.id);
       return true;
@@ -421,7 +469,9 @@ class Store {
     // Process Stall Groups / Multi-Stall Distribution (Enhancement 9 & 10)
     const rawStallGroups = Array.isArray(orderData.stallGroups) && orderData.stallGroups.length > 0 
       ? orderData.stallGroups 
-      : (Array.isArray(orderData.items) && orderData.items.length > 0 ? this._groupItemsByStall(orderData.items) : []);
+      : (Array.isArray(orderData.vendorAllocations) && orderData.vendorAllocations.length > 0
+          ? orderData.vendorAllocations
+          : (Array.isArray(orderData.items) && orderData.items.length > 0 ? this._groupItemsByStall(orderData.items) : []));
 
     let vendorAllocations = [];
     let calculatedGross = 0;
@@ -680,13 +730,22 @@ class Store {
 
     order.updatedAt = new Date().toISOString();
 
-    // Also update linked billRow if present
-    const linkedBill = (this.data.billRows || []).find(r => r.internalOrderId === order.id || r.billCopyNo === order.billNo);
-    if (linkedBill) {
-      linkedBill.vendorId = order.vendorId;
-      linkedBill.customerName = order.customer.name;
-      linkedBill.mobile = order.customer.phone;
-    }
+    // Also update all linked billRows (including multi-vendor stall splits) if present
+    const linkedBills = (this.data.billRows || []).filter(r => 
+      r.internalOrderId === order.id || 
+      (order.billNo && r.billCopyNo && (r.billCopyNo === order.billNo || r.billCopyNo.startsWith(order.billNo + '-S')))
+    );
+    linkedBills.forEach(linkedBill => {
+      if (order.customer) {
+        linkedBill.customerName = order.customer.name;
+        linkedBill.mobile = order.customer.phone;
+      }
+      if (!order.vendorAllocations || order.vendorAllocations.length <= 1) {
+        if (order.vendorId && order.vendorId !== 'MULTI') {
+          linkedBill.vendorId = order.vendorId;
+        }
+      }
+    });
 
     this.logAudit(
       typeof user === 'string' ? user : (user.name || 'Super Admin'),
@@ -716,13 +775,16 @@ class Store {
     order.shopifyError = null;
     order.updatedAt = new Date().toISOString();
 
-    // Also update linked billRow so it enters official settlement calculations
-    const linkedBill = (this.data.billRows || []).find(r => r.internalOrderId === order.id || r.billCopyNo === order.billNo);
-    if (linkedBill) {
+    // Also update ALL linked billRows (including multi-vendor stall splits) so they enter official settlement calculations
+    const linkedBills = (this.data.billRows || []).filter(r => 
+      r.internalOrderId === order.id || 
+      (order.billNo && r.billCopyNo && (r.billCopyNo === order.billNo || r.billCopyNo.startsWith(order.billNo + '-S')))
+    );
+    linkedBills.forEach(linkedBill => {
       linkedBill.shopifyOrderId = order.shopifyOrderId;
       linkedBill.isApproved = true;
       linkedBill.status = 'Paid';
-    }
+    });
 
     this.logAudit(
       order.pushedBy,

@@ -1403,6 +1403,16 @@ app.post('/api/webhooks/shopify-order', (req, res) => {
   const mobile = (payload.customer && payload.customer.phone) || payload.phone || '9876543210';
   const paymentMode = (payload.gateway && payload.gateway.toLowerCase().includes('cash')) ? 'Cash' : 'Razorpay Online';
 
+  // Deduplication check: if order is already present in billRows or internalOrders, skip duplicate insertion
+  const alreadySynced = (store.data.billRows || []).some(r => String(r.shopifyOrderId) === shopifyOrderId);
+  if (alreadySynced) {
+    console.log(`[Shopify Webhook] Order ${shopifyOrderId} (${orderRef}) already synced in settlement ledger. Skipping duplicate ingestion.`);
+    return res.status(200).json({
+      success: true,
+      message: 'Order already recorded in settlement ledger. Deduplication applied.'
+    });
+  }
+
   let billCopyNo = 'HP-VIJ-' + Math.floor(2000 + Math.random() * 8000);
   if (Array.isArray(payload.note_attributes)) {
     const attr = payload.note_attributes.find(a => 
