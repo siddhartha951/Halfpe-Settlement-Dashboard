@@ -193,6 +193,61 @@ function setupLiveSync() {
 }
 
 // -------------------------------------------------------------
+// URL Hash Routing & Persistence (Enhancement 1)
+// -------------------------------------------------------------
+function syncRouteFromHash() {
+  const hash = (window.location.hash || '').slice(1);
+  if (!hash) return false;
+
+  const [tabPart, queryPart] = hash.split('?');
+  const tab = tabPart ? tabPart.trim() : '';
+  const validTabs = ['overall', 'vendors', 'orders', 'vendor_mgmt', 'payout_mgmt', 'audit', 'team'];
+
+  if (!validTabs.includes(tab)) return false;
+
+  state.activeTab = tab;
+
+  if (tab === 'vendors' && queryPart) {
+    const params = new URLSearchParams(queryPart);
+    const vId = params.get('vendorId');
+    if (vId) {
+      state.selectedVendorId = vId;
+    } else {
+      state.selectedVendorId = null;
+    }
+  } else {
+    state.selectedVendorId = null;
+  }
+
+  // Sync nav tab active classes
+  const tabIdMap = {
+    overall: 'tabOverall',
+    vendors: 'tabVendors',
+    orders: 'tabOrders',
+    vendor_mgmt: 'tabVendorMgmt',
+    payout_mgmt: 'tabPayouts',
+    audit: 'tabAudit',
+    team: 'tabTeam'
+  };
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const activeBtn = document.getElementById(tabIdMap[tab]);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  return true;
+}
+
+window.addEventListener('hashchange', () => {
+  if (!state.currentUser) return;
+  if (syncRouteFromHash()) {
+    if (state.selectedVendorId) {
+      loadVendorDetail(state.selectedVendorId);
+    } else {
+      renderMain();
+    }
+  }
+});
+
+// -------------------------------------------------------------
 // Initialization
 // -------------------------------------------------------------
 async function init() {
@@ -216,14 +271,20 @@ async function init() {
   // 4. Check Shopify connection status
   await checkShopifyStatus();
 
-  // 5. Load initial vendors data only if authenticated, otherwise render login page immediately
+  // 5. Load initial data with URL hash route restoration (E1)
   if (state.currentUser) {
     await loadVendorsSummary();
+    const restored = syncRouteFromHash();
+    if (restored && state.selectedVendorId) {
+      await loadVendorDetail(state.selectedVendorId);
+    } else if (restored) {
+      renderMain();
+    }
   } else {
     renderMain();
   }
 
-  // 5. Setup modal click outside to dismiss
+  // 6. Setup modal click outside to dismiss
   const modalContainer = document.getElementById('modalContainer');
   if (modalContainer) {
     modalContainer.addEventListener('click', (e) => {
@@ -851,9 +912,17 @@ async function executeLogin(email, password) {
 // -------------------------------------------------------------
 // Navigation & Main Rendering
 // -------------------------------------------------------------
-function switchMainTab(tab) {
+function switchMainTab(tab, updateHash = true) {
   state.activeTab = tab;
   state.selectedVendorId = null;
+
+  if (updateHash && window.location.hash !== '#' + tab) {
+    try {
+      history.pushState(null, '', '#' + tab);
+    } catch (e) {
+      window.location.hash = '#' + tab;
+    }
+  }
 
   const tabIdMap = {
     overall: 'tabOverall',
@@ -1613,11 +1682,23 @@ function handleStatusFilter(val) {
 // -------------------------------------------------------------
 // 2. Vendor Detail View
 // -------------------------------------------------------------
-async function selectVendor(vendorId) {
+async function selectVendor(vendorId, updateHash = true) {
   state.selectedVendorId = vendorId;
   state.vendorDetailSubTab = 'bills';
   state.vendorFilterGroupA = 'all';
   state.vendorFilterGroupB = 'all';
+
+  if (updateHash) {
+    const targetHash = '#vendors?vendorId=' + encodeURIComponent(vendorId);
+    if (window.location.hash !== targetHash) {
+      try {
+        history.pushState(null, '', targetHash);
+      } catch (e) {
+        window.location.hash = targetHash;
+      }
+    }
+  }
+
   await loadVendorDetail(vendorId);
 }
 
@@ -1642,10 +1723,19 @@ async function loadVendorDetail(vendorId) {
   }
 }
 
-function closeVendorDetail() {
+function closeVendorDetail(updateHash = true) {
   state.selectedVendorId = null;
   state.vendorFilterGroupA = 'all';
   state.vendorFilterGroupB = 'all';
+
+  if (updateHash && window.location.hash !== '#vendors') {
+    try {
+      history.pushState(null, '', '#vendors');
+    } catch (e) {
+      window.location.hash = '#vendors';
+    }
+  }
+
   loadVendorsSummary();
 }
 

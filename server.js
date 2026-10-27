@@ -404,8 +404,9 @@ function checkDayLock(req, res, next) {
   
   const dayStr = date.split('T')[0];
   const lock = store.data.dayLocks.find(dl => dl.date === dayStr && dl.isLocked);
+  const actor = req.user || getRequestUser(req);
   
-  if (lock && currentUser.role !== 'super_admin') {
+  if (lock && actor.role !== 'super_admin') {
     return res.status(403).json({
       error: `Day ${dayStr} is locked by Finance. Only Super Admin can modify locked records.`
     });
@@ -417,6 +418,7 @@ function checkDayLock(req, res, next) {
 // 2. Vendors List & Detail (Supports Custom Date Range & Role Isolation)
 // -------------------------------------------------------------
 app.get('/api/vendors', (req, res) => {
+  const actor = req.user || getRequestUser(req);
   const { startDate, endDate, includeInactive } = req.query;
   const dateCheck = validateDateRange(startDate, endDate);
   if (!dateCheck.valid) {
@@ -424,8 +426,8 @@ app.get('/api/vendors', (req, res) => {
   }
 
   // Vendor role data isolation
-  if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId) {
-    const single = store.getVendorSummary(currentUser.vendorId, { startDate, endDate });
+  if (actor && actor.role === 'vendor' && actor.vendorId) {
+    const single = store.getVendorSummary(actor.vendorId, { startDate, endDate });
     return res.json({
       vendors: single ? [single] : [],
       eventTotals: single ? {
@@ -458,9 +460,10 @@ app.get('/api/vendors', (req, res) => {
 
 app.get('/api/vendors/:id', (req, res) => {
   try {
+    const actor = req.user || getRequestUser(req);
     const { id } = req.params;
     // Vendor isolation guard
-    if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId && currentUser.vendorId !== id) {
+    if (actor && actor.role === 'vendor' && actor.vendorId && actor.vendorId !== id) {
       return res.status(403).json({ error: 'Access denied: You can only view your own vendor dashboard.' });
     }
 
@@ -486,7 +489,7 @@ app.get('/api/vendors/:id', (req, res) => {
     );
 
     // Mask mobile numbers if not admin
-    const activeRole = (currentUser && currentUser.role) || 'super_admin';
+    const activeRole = (actor && actor.role) || 'super_admin';
     const maskedBills = bills.map(b => {
       let maskedMobile = b.mobile || 'N/A';
       if (activeRole === 'viewer' || activeRole === 'billing_staff' || activeRole === 'vendor') {
@@ -512,11 +515,12 @@ app.get('/api/vendors/:id', (req, res) => {
 
 // Super Admin Vendor Management (CRUD)
 app.post('/api/vendors', (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can add vendors.' });
   }
   try {
-    const newVendor = store.addVendor(req.body, currentUser);
+    const newVendor = store.addVendor(req.body, actor);
     res.status(201).json({ success: true, vendor: newVendor });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -524,11 +528,12 @@ app.post('/api/vendors', (req, res) => {
 });
 
 app.put('/api/vendors/:id', (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can edit vendor details.' });
   }
   try {
-    const updated = store.updateVendor(req.params.id, req.body, currentUser);
+    const updated = store.updateVendor(req.params.id, req.body, actor);
     res.json({ success: true, vendor: updated });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -536,12 +541,13 @@ app.put('/api/vendors/:id', (req, res) => {
 });
 
 app.post('/api/vendors/:id/toggle-status', (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can activate/deactivate vendors.' });
   }
   try {
     const { active } = req.body;
-    const vendor = store.toggleVendorStatus(req.params.id, active, currentUser);
+    const vendor = store.toggleVendorStatus(req.params.id, active, actor);
     res.json({ success: true, vendor });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -549,7 +555,8 @@ app.post('/api/vendors/:id/toggle-status', (req, res) => {
 });
 
 app.patch('/api/vendors/:id/commission', (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role !== 'super_admin') {
     return res.status(403).json({ error: 'Only Super Admin can update vendor commission.' });
   }
   const { id } = req.params;
@@ -561,7 +568,7 @@ app.patch('/api/vendors/:id/commission', (req, res) => {
   vendor.commissionPct = parseFloat(commissionPct);
 
   store.logAudit(
-    currentUser.name,
+    actor.name,
     'UPDATE_COMMISSION',
     'vendor',
     vendor.id,
@@ -608,17 +615,18 @@ app.post('/api/orders/record', (req, res) => {
 // List Internal Orders
 app.get('/api/orders', (req, res) => {
   try {
+    const actor = req.user || getRequestUser(req);
     const filters = { ...req.query };
 
     // Strict Vendor Isolation: vendor user only sees their own orders
-    if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId) {
-      filters.vendorId = currentUser.vendorId;
+    if (actor && actor.role === 'vendor' && actor.vendorId) {
+      filters.vendorId = actor.vendorId;
     }
 
     const orders = store.getInternalOrders(filters);
 
     // Mask phone numbers if viewer or billing staff
-    const activeRole = (currentUser && currentUser.role) || 'super_admin';
+    const activeRole = (actor && actor.role) || 'super_admin';
     const maskedOrders = orders.map(o => {
       let phone = o.customer?.phone || '';
       if (activeRole === 'viewer' || activeRole === 'billing_staff') {
@@ -638,11 +646,12 @@ app.get('/api/orders', (req, res) => {
 
 // Single Order detail
 app.get('/api/orders/:id', (req, res) => {
+  const actor = req.user || getRequestUser(req);
   const order = store.getInternalOrderById(req.params.id);
   if (!order) return res.status(404).json({ error: 'Order not found' });
 
   // Vendor isolation guard
-  if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId && order.vendorId !== currentUser.vendorId) {
+  if (actor && actor.role === 'vendor' && actor.vendorId && order.vendorId !== actor.vendorId) {
     return res.status(403).json({ error: 'Access denied: You can only view your own orders.' });
   }
 
@@ -839,6 +848,7 @@ app.post('/api/orders/simulate', (req, res) => {
 // 3. Bill Rows (Orders Table CRUD with Audit & Constraints)
 // -------------------------------------------------------------
 app.get('/api/bills', (req, res) => {
+  const actor = req.user || getRequestUser(req);
   const { vendorId, paymentMode, source, status, search, mismatchOnly, startDate, endDate } = req.query;
   const dateCheck = validateDateRange(startDate, endDate);
   if (!dateCheck.valid) {
@@ -848,8 +858,8 @@ app.get('/api/bills', (req, res) => {
 
   list = store.filterByDateRange(list, 'createdAt', startDate, endDate);
 
-  const effectiveVendorId = (currentUser && currentUser.role === 'vendor' && currentUser.vendorId) 
-    ? currentUser.vendorId 
+  const effectiveVendorId = (actor && actor.role === 'vendor' && actor.vendorId) 
+    ? actor.vendorId 
     : vendorId;
 
   if (effectiveVendorId) list = list.filter(r => r.vendorId === effectiveVendorId);
@@ -869,7 +879,7 @@ app.get('/api/bills', (req, res) => {
   }
 
   // Mask mobile numbers if not admin
-  const activeRole = (currentUser && currentUser.role) || 'super_admin';
+  const activeRole = (actor && actor.role) || 'super_admin';
   const maskedBills = list.map(b => {
     let maskedMobile = b.mobile || 'N/A';
     if (activeRole === 'viewer' || activeRole === 'billing_staff' || activeRole === 'vendor') {
@@ -884,7 +894,8 @@ app.get('/api/bills', (req, res) => {
 });
 
 app.post('/api/bills', checkDayLock, (req, res) => {
-  if (currentUser.role === 'viewer' || currentUser.role === 'finance') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role === 'viewer' || actor.role === 'finance') {
     return res.status(403).json({ error: 'Finance and Viewers cannot add sales rows.' });
   }
 
@@ -921,14 +932,14 @@ app.post('/api/bills', checkDayLock, (req, res) => {
     voidReason: null,
     mismatchFlag: false,
     createdAt: new Date().toISOString(),
-    lastEditedBy: currentUser.name,
+    lastEditedBy: actor.name,
     lastEditedAt: new Date().toISOString()
   };
 
   store.data.billRows.unshift(newRow);
 
   store.logAudit(
-    currentUser.name,
+    actor.name,
     'ADD_ROW',
     'bill_row',
     newRow.id,
@@ -943,7 +954,8 @@ app.post('/api/bills', checkDayLock, (req, res) => {
 });
 
 app.patch('/api/bills/:id', checkDayLock, (req, res) => {
-  if (currentUser.role === 'viewer' || currentUser.role === 'finance') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role === 'viewer' || actor.role === 'finance') {
     return res.status(403).json({ error: 'Finance and Viewers cannot edit sales rows.' });
   }
 
@@ -967,7 +979,7 @@ app.patch('/api/bills/:id', checkDayLock, (req, res) => {
       row.mismatchFlag = true;
     }
     store.logAudit(
-      currentUser.name,
+      actor.name,
       'EDIT_ROW',
       'bill_row',
       row.id,
@@ -981,7 +993,7 @@ app.patch('/api/bills/:id', checkDayLock, (req, res) => {
   if (paymentMode && paymentMode !== oldMode) {
     row.paymentMode = paymentMode;
     store.logAudit(
-      currentUser.name,
+      actor.name,
       'EDIT_ROW',
       'bill_row',
       row.id,
@@ -993,7 +1005,7 @@ app.patch('/api/bills/:id', checkDayLock, (req, res) => {
   }
 
   row.source = 'Edited';
-  row.lastEditedBy = currentUser.name;
+  row.lastEditedBy = actor.name;
   row.lastEditedAt = new Date().toISOString();
   store.save();
 
@@ -1001,7 +1013,8 @@ app.patch('/api/bills/:id', checkDayLock, (req, res) => {
 });
 
 app.post('/api/bills/:id/void', (req, res) => {
-  if (currentUser.role === 'viewer' || currentUser.role === 'finance') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role === 'viewer' || actor.role === 'finance') {
     return res.status(403).json({ error: 'Only authorized billing staff or Super Admin can void rows.' });
   }
 
@@ -1019,11 +1032,11 @@ app.post('/api/bills/:id/void', (req, res) => {
   row.isVoid = true;
   row.status = 'Voided';
   row.voidReason = reason;
-  row.lastEditedBy = currentUser.name;
+  row.lastEditedBy = actor.name;
   row.lastEditedAt = new Date().toISOString();
 
   store.logAudit(
-    currentUser.name,
+    actor.name,
     'VOID_ROW',
     'bill_row',
     row.id,
@@ -1041,7 +1054,8 @@ app.post('/api/bills/:id/void', (req, res) => {
 // 4. Returns Management (Section 6.5)
 // -------------------------------------------------------------
 app.post('/api/returns', (req, res) => {
-  if (currentUser.role === 'viewer') {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role === 'viewer') {
     return res.status(403).json({ error: 'Viewers cannot record returns.' });
   }
 
@@ -1073,7 +1087,7 @@ app.post('/api/returns', (req, res) => {
     reason: reason || 'Item return/exchange',
     refundMode: refundMode || 'Cash',
     date: new Date().toISOString(),
-    approvedBy: currentUser.name
+    approvedBy: actor.name
   };
 
   store.data.returns.unshift(newReturn);
@@ -1082,7 +1096,7 @@ app.post('/api/returns', (req, res) => {
   row.status = totalReturnedNow >= row.billAmount ? 'Returned (full)' : 'Returned (partial)';
 
   store.logAudit(
-    currentUser.name,
+    actor.name,
     'RECORD_RETURN',
     'return',
     newReturn.id,
@@ -1101,8 +1115,9 @@ app.post('/api/returns', (req, res) => {
 // -------------------------------------------------------------
 app.get('/api/vendors/:id/unpaid-orders', (req, res) => {
   try {
+    const actor = req.user || getRequestUser(req);
     const { id } = req.params;
-    if (currentUser && currentUser.role === 'vendor' && currentUser.vendorId && currentUser.vendorId !== id) {
+    if (actor && actor.role === 'vendor' && actor.vendorId && actor.vendorId !== id) {
       return res.status(403).json({ error: 'Access denied: You can only view your own vendor orders.' });
     }
     const orders = store.getUnpaidOrdersForVendor(id);

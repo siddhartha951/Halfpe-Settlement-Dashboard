@@ -642,6 +642,13 @@ class Store {
     const order = this.getInternalOrderById(id);
     if (!order) return null;
 
+    // Optimistic Concurrency Control (Enhancement 8)
+    if (updates.expectedUpdatedAt && order.updatedAt && updates.expectedUpdatedAt !== order.updatedAt) {
+      const err = new Error('Conflict: Record was modified by another user. Please refresh and review latest changes.');
+      err.status = 409;
+      throw err;
+    }
+
     const oldSnapshot = JSON.stringify(order);
 
     if (updates.stallNo !== undefined) order.stallNo = updates.stallNo;
