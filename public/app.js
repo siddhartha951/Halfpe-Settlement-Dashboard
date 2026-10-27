@@ -304,7 +304,14 @@ async function init() {
   window.toggleVendorActiveStatus = toggleVendorActiveStatus;
   window.renderPayoutManagementView = renderPayoutManagementView;
   window.openOrderPayoutModal = openOrderPayoutModal;
+  window.showPayoutVendorSuggest = showPayoutVendorSuggest;
+  window.filterPayoutVendorSuggest = filterPayoutVendorSuggest;
+  window.selectPayoutVendor = selectPayoutVendor;
+  window.clearSelectedPayoutVendor = clearSelectedPayoutVendor;
   window.handlePayoutVendorSelect = handlePayoutVendorSelect;
+  window.toggleSelectAllPayoutOrders = toggleSelectAllPayoutOrders;
+  window.handleOrderPayoutCheckChange = handleOrderPayoutCheckChange;
+  window.handleAllocInputTyped = handleAllocInputTyped;
   window.quickFillAllocation = quickFillAllocation;
   window.recalculatePayoutAllocations = recalculatePayoutAllocations;
   window.submitOrderPayout = submitOrderPayout;
@@ -4325,56 +4332,76 @@ async function loadAndRenderPayoutMgmt() {
 }
 
 // Smart Order-Linked Payout Modal
+// Smart Order-Linked Payout Modal (E5 + E6)
 async function openOrderPayoutModal() {
   const container = document.getElementById('modalContainer');
   if (!container) return;
 
-  const vendors = (state.vendorsData && state.vendorsData.vendors) ? state.vendorsData.vendors : [];
-
   container.innerHTML = `
-    <div class="login-modal-box" style="max-width: 680px;">
+    <div class="login-modal-box" style="max-width: 720px;">
       <div class="login-modal-header">
         <div>
           <h3 class="login-modal-title">💸 Record Order-Linked Payout</h3>
-          <p class="login-modal-sub">Allocate payment against specific customer orders with remaining balance tracking</p>
+          <p class="login-modal-sub">Search vendor, multi-select orders, and allocate payment with real-time balance tracking</p>
         </div>
         <button class="modal-close-btn" onclick="closeModal()">×</button>
       </div>
 
       <form id="orderPayoutForm" onsubmit="submitOrderPayout(event)" style="padding: 24px; max-height: 75vh; overflow-y: auto;">
-        <!-- 1. Select Vendor -->
-        <div style="margin-bottom: 18px;">
-          <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Select Vendor:</label>
-          <select id="payoutVendorSelect" class="form-input" style="width: 100%; height: 38px;" onchange="handlePayoutVendorSelect(this.value)" required>
-            <option value="">-- Choose Vendor to Settle --</option>
-            ${vendors.map(vObj => {
-              const v = vObj.vendor || vObj;
-              return `<option value="${v.id}">${v.stallNo}: ${v.name} (Bal: ₹${Math.round(vObj.balanceToPay || 0).toLocaleString('en-IN')})</option>`;
-            }).join('')}
-          </select>
-        </div>
+        <!-- 1. Searchable Vendor Selector (Enhancement 5) -->
+        <div style="margin-bottom: 18px; position: relative;">
+          <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">
+            Select Vendor (Search by Stall # or Vendor Name):
+          </label>
+          <div style="position: relative;">
+            <input 
+              type="text" 
+              id="payoutVendorSearchInput" 
+              class="form-input" 
+              placeholder="🔍 Search vendor by stall # (e.g. 101) or vendor name..." 
+              autocomplete="off"
+              style="width: 100%; height: 38px; padding-right: 32px;"
+              oninput="filterPayoutVendorSuggest(this.value)"
+              onfocus="showPayoutVendorSuggest(true)"
+            />
+            <button 
+              type="button" 
+              id="clearPayoutVendorBtn" 
+              style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 16px; cursor: pointer; color: #888; display: none;"
+              onclick="clearSelectedPayoutVendor()"
+            >×</button>
+          </div>
+          <input type="hidden" id="payoutVendorSelect" required>
 
-        <!-- 2. Unpaid / Partially Paid Orders Table -->
-        <div id="unpaidOrdersTableArea" style="margin-bottom: 20px;">
-          <div style="padding: 20px; text-align: center; background: var(--notion-surface-warm); border-radius: var(--radius-sm); color: var(--notion-secondary); font-size: 0.85rem;">
-            👆 Please choose a vendor above to load eligible unpaid orders.
+          <!-- Suggestions Dropdown -->
+          <div 
+            id="payoutVendorSuggestList" 
+            style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: var(--notion-surface, #ffffff); border: 1px solid var(--notion-hairline, #e2e8f0); border-radius: var(--radius-sm, 6px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15); z-index: 9999; display: none;"
+          >
           </div>
         </div>
 
-        <!-- 3. Payment Mode & Reference Details -->
+        <!-- 2. Unpaid / Partially Paid Orders Table with Selection Matrix (Enhancement 6) -->
+        <div id="unpaidOrdersTableArea" style="margin-bottom: 20px;">
+          <div style="padding: 20px; text-align: center; background: var(--notion-surface-warm); border-radius: var(--radius-sm); color: var(--notion-secondary); font-size: 0.85rem;">
+            👆 Please select a vendor above to load eligible unpaid orders.
+          </div>
+        </div>
+
+        <!-- 3. Payment Mode & Reference Details (Enhancement 6: Bank NEFT/RTGS, IMPS, Bank Transfer, Cash Payout) -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px;">
           <div>
             <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Payment Method:</label>
             <select id="payoutMode" class="form-input" style="width: 100%; height: 36px;">
-              <option value="NEFT / RTGS">NEFT / RTGS Bank Transfer</option>
-              <option value="UPI">UPI Transfer</option>
-              <option value="Cheque">Bank Cheque</option>
-              <option value="Cash">Cash on Counter</option>
+              <option value="Bank NEFT/RTGS">Bank NEFT/RTGS</option>
+              <option value="IMPS">IMPS</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Cash Payout">Cash Payout</option>
             </select>
           </div>
           <div>
-            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Bank Ref / UTR / Cheque #:</label>
-            <input type="text" id="payoutRef" class="form-input" placeholder="e.g. UTR9281726189" style="width: 100%; height: 36px;" required>
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">Bank Ref / UTR #:</label>
+            <input type="text" id="payoutRef" class="form-input" placeholder="e.g. UTR9281726189 / IMPS20261027" style="width: 100%; height: 36px;" required>
           </div>
         </div>
 
@@ -4383,10 +4410,11 @@ async function openOrderPayoutModal() {
           <input type="text" id="payoutNotes" class="form-input" placeholder="e.g. Cleared morning expo session bills" style="width: 100%; height: 36px;">
         </div>
 
+        <!-- Dynamic Calculation Badge & Submission -->
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--notion-hairline); padding-top: 16px;">
           <div>
-            <span style="font-size: 0.82rem; color: var(--notion-secondary);">Total Allocated Payout:</span>
-            <div id="totalPayoutDisplay" style="font-size: 1.3rem; font-weight: 700; color: #1AAE39;">₹0.00</div>
+            <span style="font-size: 0.82rem; color: var(--notion-secondary);">Total Selected Amount:</span>
+            <div id="totalPayoutDisplay" style="font-size: 1.15rem; font-weight: 700; color: #1AAE39;">₹0.00 (0 Orders selected)</div>
           </div>
 
           <div style="display: flex; gap: 10px;">
@@ -4398,10 +4426,96 @@ async function openOrderPayoutModal() {
     </div>
   `;
   container.classList.remove('hidden');
+
+  // Pre-populate suggestions
+  filterPayoutVendorSuggest('');
+}
+
+// E5: Auto-suggest & Searchable Vendor Selector
+function showPayoutVendorSuggest(show) {
+  const list = document.getElementById('payoutVendorSuggestList');
+  if (list) list.style.display = show ? 'block' : 'none';
+}
+
+function filterPayoutVendorSuggest(query) {
+  const list = document.getElementById('payoutVendorSuggestList');
+  if (!list) return;
+
+  const vendors = (state.vendorsData && state.vendorsData.vendors) ? state.vendorsData.vendors : [];
+  const q = String(query || '').toLowerCase().trim();
+
+  const filtered = vendors.filter(vObj => {
+    const v = vObj.vendor || vObj;
+    if (!q) return true;
+    return (v.name && v.name.toLowerCase().includes(q)) ||
+           (v.stallNo && String(v.stallNo).toLowerCase().includes(q));
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div style="padding: 10px 14px; color: var(--notion-muted); font-size: 0.82rem;">No matching vendors found for "${escapeHtml(q)}".</div>`;
+    list.style.display = 'block';
+    return;
+  }
+
+  list.innerHTML = filtered.map(vObj => {
+    const v = vObj.vendor || vObj;
+    const bal = Math.round(vObj.balanceToPay || 0);
+    const safeName = escapeHtml(v.name).replace(/'/g, "\\'");
+    const safeStall = escapeHtml(v.stallNo).replace(/'/g, "\\'");
+    return `
+      <div 
+        style="padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--notion-hairline); display: flex; justify-content: space-between; align-items: center; font-size: 0.83rem;"
+        onmouseover="this.style.background='var(--notion-surface-warm)'"
+        onmouseout="this.style.background='transparent'"
+        onclick="selectPayoutVendor('${v.id}', '${safeStall}', '${safeName}')"
+      >
+        <div>
+          <strong>${escapeHtml(v.stallNo)}:</strong> ${escapeHtml(v.name)}
+        </div>
+        <div style="font-weight: 600; color: ${bal > 0 ? '#E32D14' : '#28a745'};">
+          Bal: ${formatINR(bal)}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  list.style.display = 'block';
+}
+
+function selectPayoutVendor(vendorId, stallNo, name) {
+  const searchInput = document.getElementById('payoutVendorSearchInput');
+  const hiddenInput = document.getElementById('payoutVendorSelect');
+  const clearBtn = document.getElementById('clearPayoutVendorBtn');
+  const list = document.getElementById('payoutVendorSuggestList');
+
+  if (searchInput) searchInput.value = `${stallNo}: ${name}`;
+  if (hiddenInput) hiddenInput.value = vendorId;
+  if (clearBtn) clearBtn.style.display = 'block';
+  if (list) list.style.display = 'none';
+
+  handlePayoutVendorSelect(vendorId);
+}
+
+function clearSelectedPayoutVendor() {
+  const searchInput = document.getElementById('payoutVendorSearchInput');
+  const hiddenInput = document.getElementById('payoutVendorSelect');
+  const clearBtn = document.getElementById('clearPayoutVendorBtn');
+  const tableArea = document.getElementById('unpaidOrdersTableArea');
+  const btn = document.getElementById('btnSubmitPayout');
+
+  if (searchInput) searchInput.value = '';
+  if (hiddenInput) hiddenInput.value = '';
+  if (clearBtn) clearBtn.style.display = 'none';
+  if (tableArea) tableArea.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--notion-secondary);">👆 Please select a vendor above to load eligible unpaid orders.</div>`;
+  if (btn) btn.disabled = true;
+
+  activeUnpaidOrders = [];
+  recalculatePayoutAllocations();
 }
 
 let activeUnpaidOrders = [];
 
+// E6: Selection Matrix & Unpaid Orders
 async function handlePayoutVendorSelect(vendorId) {
   const container = document.getElementById('unpaidOrdersTableArea');
   const btn = document.getElementById('btnSubmitPayout');
@@ -4425,30 +4539,42 @@ async function handlePayoutVendorSelect(vendorId) {
         </div>
       `;
       if (btn) btn.disabled = true;
+      recalculatePayoutAllocations();
       return;
     }
 
     container.innerHTML = `
       <div style="border: 1px solid var(--notion-hairline); border-radius: var(--radius-sm); overflow: hidden;">
-        <div style="padding: 8px 12px; background: var(--notion-surface-warm); font-size: 0.8rem; font-weight: 600; color: var(--notion-secondary); display: flex; justify-content: space-between;">
+        <div style="padding: 8px 12px; background: var(--notion-surface-warm); font-size: 0.8rem; font-weight: 600; color: var(--notion-secondary); display: flex; justify-content: space-between; align-items: center;">
           <span>Unpaid / Partially Paid Orders (${orders.length})</span>
-          <span style="font-size: 0.75rem; color: #0075DE;">Sorted by highest outstanding balance</span>
+          <span style="font-size: 0.75rem; color: #0075DE;">Click "Select All" or choose individual orders</span>
         </div>
-        <div style="max-height: 240px; overflow-y: auto;">
+        <div style="max-height: 260px; overflow-y: auto;">
           <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
             <thead>
               <tr style="background: #fafafa; border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+                <th style="padding: 8px 10px; width: 40px; text-align: center;">
+                  <input type="checkbox" id="selectAllPayoutOrders" onchange="toggleSelectAllPayoutOrders(this.checked)" title="Select All Unpaid Orders">
+                </th>
                 <th style="padding: 8px 10px;">Bill #</th>
                 <th style="padding: 8px 10px; text-align: right;">Payable</th>
                 <th style="padding: 8px 10px; text-align: right;">Paid</th>
                 <th style="padding: 8px 10px; text-align: right; color: #E32D14;">Outstanding</th>
-                <th style="padding: 8px 10px; text-align: right; width: 140px;">Allocate (₹)</th>
+                <th style="padding: 8px 10px; text-align: right; width: 130px;">Allocate (₹)</th>
                 <th style="padding: 8px 10px; text-align: center; width: 60px;">Action</th>
               </tr>
             </thead>
             <tbody>
               ${orders.map((o, idx) => `
                 <tr style="border-bottom: 1px solid var(--notion-hairline);">
+                  <td style="padding: 8px 10px; text-align: center;">
+                    <input 
+                      type="checkbox" 
+                      class="order-payout-check" 
+                      id="payoutCheck_${idx}" 
+                      onchange="handleOrderPayoutCheckChange(${idx}, this.checked)"
+                    >
+                  </td>
                   <td style="padding: 8px 10px;">
                     <strong>${escapeHtml(o.billNo)}</strong>
                     <div style="font-size: 0.7rem; color: var(--notion-muted);">${formatDate(o.date)}</div>
@@ -4459,9 +4585,9 @@ async function handlePayoutVendorSelect(vendorId) {
                     ₹${Number(o.outstandingBalance).toLocaleString('en-IN')}
                   </td>
                   <td style="padding: 8px 10px; text-align: right;">
-                    <input type="number" id="allocInput_${idx}" class="form-input" style="width: 110px; height: 30px; text-align: right; font-size: 0.82rem; padding: 2px 6px;"
+                    <input type="number" id="allocInput_${idx}" class="form-input" style="width: 100px; height: 30px; text-align: right; font-size: 0.82rem; padding: 2px 6px;"
                       step="0.01" min="0" max="${o.outstandingBalance}" placeholder="0.00"
-                      oninput="recalculatePayoutAllocations()">
+                      oninput="handleAllocInputTyped(${idx})">
                   </td>
                   <td style="padding: 8px 10px; text-align: center;">
                     <button type="button" class="btn btn-outline btn-xs" onclick="quickFillAllocation(${idx}, ${o.outstandingBalance})" title="Pay full remaining">
@@ -4476,22 +4602,80 @@ async function handlePayoutVendorSelect(vendorId) {
       </div>
     `;
 
-    if (btn) btn.disabled = false;
+    recalculatePayoutAllocations();
   } catch (err) {
     container.innerHTML = `<div style="padding: 14px; color: red;">Failed to load unpaid orders: ${err.message}</div>`;
   }
 }
 
+// E6: Checkbox and Selection Matrix Handlers
+function toggleSelectAllPayoutOrders(checked) {
+  activeUnpaidOrders.forEach((o, idx) => {
+    const chk = document.getElementById(`payoutCheck_${idx}`);
+    const input = document.getElementById(`allocInput_${idx}`);
+    if (chk) chk.checked = checked;
+    if (input) input.value = checked ? o.outstandingBalance : '';
+  });
+  recalculatePayoutAllocations();
+}
+
+function handleOrderPayoutCheckChange(idx, checked) {
+  const o = activeUnpaidOrders[idx];
+  const input = document.getElementById(`allocInput_${idx}`);
+  if (input && o) {
+    input.value = checked ? o.outstandingBalance : '';
+  }
+  updateSelectAllCheckboxState();
+  recalculatePayoutAllocations();
+}
+
+function handleAllocInputTyped(idx) {
+  const o = activeUnpaidOrders[idx];
+  const input = document.getElementById(`allocInput_${idx}`);
+  const chk = document.getElementById(`payoutCheck_${idx}`);
+  if (input && o) {
+    const val = parseFloat(input.value) || 0;
+    if (chk) chk.checked = val > 0;
+  }
+  updateSelectAllCheckboxState();
+  recalculatePayoutAllocations();
+}
+
+function updateSelectAllCheckboxState() {
+  const selectAll = document.getElementById('selectAllPayoutOrders');
+  if (!selectAll || activeUnpaidOrders.length === 0) return;
+
+  let checkedCount = 0;
+  activeUnpaidOrders.forEach((_, idx) => {
+    const chk = document.getElementById(`payoutCheck_${idx}`);
+    if (chk && chk.checked) checkedCount++;
+  });
+
+  if (checkedCount === 0) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+  } else if (checkedCount === activeUnpaidOrders.length) {
+    selectAll.checked = true;
+    selectAll.indeterminate = false;
+  } else {
+    selectAll.checked = false;
+    selectAll.indeterminate = true;
+  }
+}
+
 function quickFillAllocation(index, balance) {
   const input = document.getElementById(`allocInput_${index}`);
-  if (input) {
-    input.value = balance;
-    recalculatePayoutAllocations();
-  }
+  const chk = document.getElementById(`payoutCheck_${index}`);
+  if (input) input.value = balance;
+  if (chk) chk.checked = true;
+  updateSelectAllCheckboxState();
+  recalculatePayoutAllocations();
 }
 
 function recalculatePayoutAllocations() {
   let total = 0;
+  let count = 0;
+
   activeUnpaidOrders.forEach((o, idx) => {
     const input = document.getElementById(`allocInput_${idx}`);
     if (input) {
@@ -4501,12 +4685,17 @@ function recalculatePayoutAllocations() {
         val = o.outstandingBalance;
         input.value = val;
       }
-      total += val;
+      if (val > 0) {
+        total += val;
+        count++;
+      }
     }
   });
 
   const display = document.getElementById('totalPayoutDisplay');
-  if (display) display.textContent = formatINR(total);
+  if (display) {
+    display.textContent = `${formatINR(total)} (${count} Order${count === 1 ? '' : 's'} selected)`;
+  }
 
   const btn = document.getElementById('btnSubmitPayout');
   if (btn) btn.disabled = total <= 0;
@@ -4559,13 +4748,12 @@ async function submitOrderPayout(e) {
     if (data.success) {
       toast(`✓ Order-linked payout of ${formatINR(totalAmount)} recorded successfully!`, 'success');
       closeModal();
-      await loadVendorsSummary();
-      await loadAndRenderPayoutMgmt();
+      await renderPayoutManagementView();
     } else {
-      toast(`Payout recording failed: ${data.error}`, 'error');
+      toast(data.error || 'Failed to record payout', 'error');
     }
   } catch (err) {
-    toast('Network error recording payout: ' + err.message, 'error');
+    toast('Error recording payout: ' + err.message, 'error');
   }
 }
 

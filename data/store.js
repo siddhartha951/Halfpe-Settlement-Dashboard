@@ -795,27 +795,61 @@ class Store {
     if (!vendorId) return [];
 
     const results = [];
-    const internalOrders = (this.data.internalOrders || []).filter(o => o.vendorId === vendorId && o.outstandingBalance > 0);
+    const internalOrders = (this.data.internalOrders || []);
     
     internalOrders.forEach(o => {
-      results.push({
-        orderId: o.id,
-        billNo: o.billNo,
-        type: 'internal_order',
-        date: o.createdAt,
-        customerName: o.customer?.name || 'Walk-in',
-        grossAmount: o.totals?.grossAmount || 0,
-        totalPayable: o.totalPayable,
-        amountPaid: o.amountPaid,
-        outstandingBalance: o.outstandingBalance,
-        payoutStatus: o.payoutStatus,
-        shopifyOrderNumber: o.shopifyOrderNumber || '-'
-      });
+      if (o.vendorId === vendorId) {
+        if (o.outstandingBalance > 0.01) {
+          results.push({
+            orderId: o.id,
+            billNo: o.billNo,
+            type: 'internal_order',
+            date: o.createdAt,
+            customerName: o.customer?.name || 'Walk-in',
+            grossAmount: o.totals?.grossAmount || 0,
+            totalPayable: o.totalPayable,
+            amountPaid: o.amountPaid || 0,
+            outstandingBalance: o.outstandingBalance,
+            payoutStatus: o.payoutStatus || 'UNPAID',
+            shopifyOrderNumber: o.shopifyOrderNumber || '-'
+          });
+        }
+      } else if (Array.isArray(o.vendorAllocations)) {
+        const alloc = o.vendorAllocations.find(a => a.vendorId === vendorId);
+        if (alloc) {
+          const allocPayable = alloc.netPayable || Math.round((alloc.amount * (1 - (alloc.commissionPct / 100))) * 100) / 100;
+          const allocPaid = alloc.amountPaid || 0;
+          const allocBal = Math.round(Math.max(0, allocPayable - allocPaid) * 100) / 100;
+          if (allocBal > 0.01) {
+            results.push({
+              orderId: o.id,
+              billNo: alloc.billBookNo || o.billNo,
+              type: 'internal_order_allocation',
+              date: o.createdAt,
+              customerName: o.customer?.name || 'Walk-in',
+              grossAmount: alloc.amount,
+              totalPayable: allocPayable,
+              amountPaid: allocPaid,
+              outstandingBalance: allocBal,
+              payoutStatus: allocPaid > 0 ? 'PARTIALLY_PAID' : 'UNPAID',
+              shopifyOrderNumber: o.shopifyOrderNumber || '-'
+            });
+          }
+        }
+      }
     });
 
-    // Also look at billRows if vendor has bills not yet converted to internalOrders
-    const handledBillNos = new Set((this.data.internalOrders || []).map(o => o.billNo));
-    const vendorBills = (this.data.billRows || []).filter(r => r.vendorId === vendorId && !r.isVoid && !handledBillNos.has(r.billCopyNo));
+    // Also look at billRows ONLY if bills are not already tracked in internalOrders
+    const allInternalIds = new Set((this.data.internalOrders || []).map(o => o.id));
+    const allInternalBillNos = new Set((this.data.internalOrders || []).map(o => o.billNo));
+    
+    const vendorBills = (this.data.billRows || []).filter(r => 
+      r.vendorId === vendorId && 
+      !r.isVoid && 
+      !allInternalIds.has(r.internalOrderId) && 
+      !allInternalIds.has(r.id) &&
+      !allInternalBillNos.has(r.billCopyNo)
+    );
     
     const vendor = this.data.vendors.find(v => v.id === vendorId);
     const commPct = vendor ? Number(vendor.commissionPct ?? 15) : 15;
@@ -825,7 +859,7 @@ class Store {
       const payable = Math.round((gross * (1 - (commPct / 100))) * 100) / 100;
       const paid = Number(r.amountPaid || 0);
       const balance = Math.round(Math.max(0, payable - paid) * 100) / 100;
-      if (balance > 0) {
+      if (balance > 0.01) {
         results.push({
           orderId: r.id,
           billNo: r.billCopyNo || r.id,
@@ -880,12 +914,31 @@ class Store {
 
       let matchedInternal = (this.data.internalOrders || []).find(o => o.id === alloc.orderId || o.billNo === alloc.billNo);
       if (matchedInternal) {
-        if (allocAmt > matchedInternal.outstandingBalance + 0.01) {
-          throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${matchedInternal.outstandingBalance} for Bill #${matchedInternal.billNo}`);
+        // If order has vendorAllocations, update the specific vendor allocation
+        if (Array.isArray(matchedInternal.vendorAllocations)) {
+          const allocMatch = matchedInternal.vendorAllocations.find(a => a.vendorId === vendorId);
+          if (allocMatch) {
+            const allocPayable = allocMatch.netPayable || Math.round((allocMatch.amount * (1 - (allocMatch.commissionPct / 100))) * 100) / 100;
+            const currentPaid = allocMatch.amountPaid || 0;
+            const allocBal = Math.round(Math.max(0, allocPayable - currentPaid) * 100) / 100;
+            if (allocAmt > allocBal + 0.01) {
+              throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${allocBal} for Bill #${matchedInternal.billNo}`);
+            }
+            allocMatch.amountPaid = Math.round((currentPaid + allocAmt) * 100) / 100;
+            allocMatch.outstandingBalance = Math.round(Math.max(0, allocPayable - allocMatch.amountPaid) * 100) / 100;
+            allocMatch.payoutStatus = allocMatch.outstandingBalance <= 0.01 ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+          }
         }
-        matchedInternal.amountPaid = Math.round((matchedInternal.amountPaid + allocAmt) * 100) / 100;
-        matchedInternal.outstandingBalance = Math.round(Math.max(0, matchedInternal.totalPayable - matchedInternal.amountPaid) * 100) / 100;
-        matchedInternal.payoutStatus = (matchedInternal.outstandingBalance <= 0.01) ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+
+        if (matchedInternal.vendorId === vendorId) {
+          if (allocAmt > matchedInternal.outstandingBalance + 0.01) {
+            throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${matchedInternal.outstandingBalance} for Bill #${matchedInternal.billNo}`);
+          }
+          matchedInternal.amountPaid = Math.round((matchedInternal.amountPaid + allocAmt) * 100) / 100;
+          matchedInternal.outstandingBalance = Math.round(Math.max(0, matchedInternal.totalPayable - matchedInternal.amountPaid) * 100) / 100;
+          matchedInternal.payoutStatus = (matchedInternal.outstandingBalance <= 0.01) ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+        }
+
         if (!matchedInternal.payoutAllocations) matchedInternal.payoutAllocations = [];
         matchedInternal.payoutAllocations.push({
           payoutId,
