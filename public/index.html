@@ -104,7 +104,7 @@
         </button>
       </div>
 
-      <button class="btn btn-outline btn-sm desktop-only" onclick="openWebhookSimulator()">
+      <button class="btn btn-outline btn-sm desktop-only" id="btnSimulateWebhook" style="display: none;" onclick="openWebhookSimulator()">
         ⚡ Simulate Webhook
       </button>
 
@@ -192,7 +192,7 @@
     <!-- Vendor Selector Alongside Date Range Filter -->
     <div class="vendor-selector-group" id="globalVendorSelectorWrap" style="display: flex; align-items: center; gap: 8px;">
       <span style="font-weight: 600; font-size: 0.82rem; color: var(--notion-secondary); white-space: nowrap;">🏪 Vendor:</span>
-      <select id="globalVendorSelector" class="form-input" style="padding: 4px 10px; font-size: 0.82rem; height: 32px; border-radius: var(--radius-sm); border: 1px solid var(--notion-hairline); max-width: 200px; background: #fff;" onchange="handleGlobalVendorChange(this.value)">
+      <select id="globalVendorSelector" class="form-input" style="padding: 4px 10px; font-size: 0.82rem; height: 32px; border-radius: var(--radius-sm); border: 1px solid var(--notion-hairline); min-width: 225px; max-width: 280px; background: #fff;" onchange="handleGlobalVendorChange(this.value)">
         <option value="all">All Vendors (Consolidated)</option>
       </select>
     </div>

@@ -1853,7 +1853,7 @@ async function renderOverallSettlementView() {
       </div>
       <div class="summary-card">
         <span class="summary-card-label">Total Returns <span>↩️</span></span>
-        <span class="summary-card-value" style="color: var(--notion-red);">-${formatINR(eventTotals.totalReturns)}</span>
+        <span class="summary-card-value" style="color: var(--notion-red);">${Number(eventTotals.totalReturns) > 0 ? '-' : ''}${formatINR(eventTotals.totalReturns)}</span>
         <span class="summary-card-sub">Refunds processed</span>
       </div>
       <div class="summary-card">
@@ -2181,7 +2181,7 @@ function renderVendorsListView() {
       </div>
       <div class="summary-card">
         <span class="summary-card-label">Total Returns <span>↩️</span></span>
-        <span class="summary-card-value" style="color: var(--notion-red);">-${formatINR(eventTotals.totalReturns)}</span>
+        <span class="summary-card-value" style="color: var(--notion-red);">${Number(eventTotals.totalReturns) > 0 ? '-' : ''}${formatINR(eventTotals.totalReturns)}</span>
         <span class="summary-card-sub">Deducted from sales</span>
       </div>
       <div class="summary-card">
@@ -2269,7 +2269,7 @@ function renderVendorsListView() {
               <td colspan="2">TOTALS (${filtered.length} Vendors)</td>
               <td>${eventTotals.totalOrders}</td>
               <td>${formatINR(eventTotals.grossSales)}</td>
-              <td style="color: #F87171;">-${formatINR(eventTotals.totalReturns)}</td>
+              <td style="color: #F87171;">${Number(eventTotals.totalReturns) > 0 ? '-' : ''}${formatINR(eventTotals.totalReturns)}</td>
               <td>${formatINR(eventTotals.netSales)}</td>
               <td style="color: #A5B4FC;">${formatINR(eventTotals.totalCommission)}</td>
               <td style="color: #34D399;">${formatINR(eventTotals.settlementPayable)}</td>
@@ -3976,11 +3976,12 @@ async function renderOrdersManagementView() {
           </p>
         </div>
 
-        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-          ${getUserRole() === 'super_admin' ? `
+          ${(getUserRole() === 'super_admin' && state.devMode) ? `
             <button class="btn btn-outline btn-sm" onclick="simulatePosOrder()" title="Simulate a new customer order from POS for testing">
               ➕ Simulate POS Order
             </button>
+          ` : ''}
+          ${getUserRole() === 'super_admin' ? `
             <button class="btn btn-primary btn-sm" id="btnBulkApproveTop" onclick="bulkPushApprovedOrders()" style="background: #008060; border-color: #008060;">
               🚀 Bulk Approve & Push to Shopify
             </button>
@@ -4011,10 +4012,15 @@ async function renderOrdersManagementView() {
           <span class="summary-card-value" style="color: #008060;" id="kpiApprovedOrders">0</span>
           <span class="summary-card-sub">Live in Shopify & Settlement</span>
         </div>
-        <div class="summary-card" style="padding: 14px 18px;">
-          <span class="summary-card-label">Rejected / Failed <span>✕</span></span>
+        <div class="summary-card" style="padding: 14px 18px; border-left: 3px solid #D97706;">
+          <span class="summary-card-label">Push Failed (Needs Retry) <span>⚠️</span></span>
+          <span class="summary-card-value" style="color: #D97706;" id="kpiFailedOrders">0</span>
+          <span class="summary-card-sub">Shopify sync error</span>
+        </div>
+        <div class="summary-card" style="padding: 14px 18px; border-left: 3px solid #C4122F;">
+          <span class="summary-card-label">Rejected <span>❌</span></span>
           <span class="summary-card-value" style="color: #C4122F;" id="kpiRejectedOrders">0</span>
-          <span class="summary-card-sub">Declined or sync error</span>
+          <span class="summary-card-sub">Declined orders</span>
         </div>
       </div>
 
@@ -4074,7 +4080,8 @@ async function loadAndRenderOrdersTable() {
     if (Array.isArray(allOrders)) {
       const pending = allOrders.filter(o => o.status === 'PENDING_APPROVAL' || (!o.status && !o.shopifyOrderId));
       const approved = allOrders.filter(o => o.status === 'APPROVED' || o.shopifySyncStatus === 'PUSHED');
-      const rejected = allOrders.filter(o => o.status === 'REJECTED' || o.shopifySyncStatus === 'FAILED');
+      const failed = allOrders.filter(o => o.shopifySyncStatus === 'FAILED');
+      const rejected = allOrders.filter(o => o.status === 'REJECTED');
       const pendingVal = pending.reduce((sum, o) => sum + Number(o.totals?.payable || o.totalPayable || 0), 0);
 
       const kpiTotal = document.getElementById('kpiTotalOrders');
@@ -4085,6 +4092,8 @@ async function loadAndRenderOrdersTable() {
       if (kpiPendVal) kpiPendVal.textContent = `₹${pendingVal.toLocaleString('en-IN')} value`;
       const kpiAppr = document.getElementById('kpiApprovedOrders');
       if (kpiAppr) kpiAppr.textContent = approved.length;
+      const kpiFailed = document.getElementById('kpiFailedOrders');
+      if (kpiFailed) kpiFailed.textContent = failed.length;
       const kpiRej = document.getElementById('kpiRejectedOrders');
       if (kpiRej) kpiRej.textContent = rejected.length;
 
@@ -4138,8 +4147,8 @@ async function loadAndRenderOrdersTable() {
                 <th style="padding: 10px 14px;">Customer</th>
                 <th style="padding: 10px 14px;">Stall & Vendor</th>
                 <th style="padding: 10px 14px;">Items</th>
-                <th style="padding: 10px 14px; text-align: right;">Gross Sale</th>
-                <th style="padding: 10px 14px; text-align: right;">Net Payable</th>
+                <th style="padding: 10px 14px; text-align: right; min-width: 115px; white-space: nowrap;">Gross Sale</th>
+                <th style="padding: 10px 14px; text-align: right; min-width: 115px; white-space: nowrap;">Net Payable</th>
                 <th style="padding: 10px 14px;">Payment</th>
                 <th style="padding: 10px 14px;">Approval Status</th>
                 <th style="padding: 10px 14px;">Shopify Status</th>
@@ -4184,10 +4193,10 @@ async function loadAndRenderOrdersTable() {
                       <span title="${escapeHtml(firstItemTitle)}">${escapeHtml(firstItemTitle)}</span>
                       ${itemsCount > 1 ? `<span class="badge badge-outline" style="font-size: 0.68rem; margin-left: 2px;">+${itemsCount - 1}</span>` : ''}
                     </td>
-                    <td style="padding: 12px 14px; text-align: right; font-weight: 600;">
+                    <td style="padding: 12px 14px; text-align: right; font-weight: 600; min-width: 115px; white-space: nowrap;">
                       ₹${Number(gross).toLocaleString('en-IN')}
                     </td>
-                    <td style="padding: 12px 14px; text-align: right; font-weight: 600; color: #0075DE;">
+                    <td style="padding: 12px 14px; text-align: right; font-weight: 600; color: #0075DE; min-width: 115px; white-space: nowrap;">
                       ₹${Number(net).toLocaleString('en-IN')}
                     </td>
                     <td style="padding: 12px 14px;">
