@@ -248,6 +248,347 @@ window.addEventListener('hashchange', () => {
 });
 
 // -------------------------------------------------------------
+// Universal CSV / Excel Export Engine (Enhancement 3 & 4)
+// -------------------------------------------------------------
+function downloadDataAsCSV(filename, headers, rows) {
+  const escapeCell = (val) => {
+    if (val === null || val === undefined) return '""';
+    const s = String(val).replace(/"/g, '""');
+    return `"${s}"`;
+  };
+
+  const headerLine = headers.map(escapeCell).join(',');
+  const rowLines = rows.map(r => r.map(escapeCell).join(','));
+  const csvContent = '\uFEFF' + [headerLine, ...rowLines].join('\r\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename.endsWith('.csv') ? filename : (filename + '.csv'));
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function handleVendorLinkClick(event, vendorId) {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.button === 1) {
+    return; // Allow native browser behavior (open in new tab / window)
+  }
+  event.preventDefault();
+  selectVendor(vendorId);
+}
+
+// 1. Overall Settlement CSV Export
+async function exportOverallSettlementCSV() {
+  try {
+    toast('Preparing Overall Settlement CSV export...', 'info');
+    let data = state.vendorsData;
+    if (!data || !data.vendors) {
+      const res = await fetch('/api/vendors');
+      data = await res.json();
+    }
+    const vendors = data.vendors || [];
+    const eventTotals = data.eventTotals || {};
+
+    const headers = [
+      'Stall No', 'Vendor Name', 'Seller ID / Code', 'Total Orders', 
+      'Gross Sales (₹)', 'Total Returns (₹)', 'Net Sales (₹)', 
+      'Commission %', 'Commission Amount (₹)', 'Settlement Payable (₹)', 
+      'Already Paid (₹)', 'Balance to Pay (₹)', 'Status'
+    ];
+
+    const rows = vendors.map(v => [
+      v.vendor.stallNo || '-',
+      v.vendor.name || '-',
+      v.vendor.webkulSellerId || v.vendor.code || '-',
+      v.ordersCount || 0,
+      v.grossSales || 0,
+      v.returnsAmount || 0,
+      v.netSales || 0,
+      (v.commissionPct || 15) + '%',
+      v.commissionAmount || 0,
+      v.settlementPayable || 0,
+      v.alreadyPaid || 0,
+      v.balanceToPay || 0,
+      v.status || 'Open'
+    ]);
+
+    rows.push([
+      'TOTALS', 'ALL VENDORS', '-', eventTotals.totalOrders || 0,
+      eventTotals.grossSales || 0, eventTotals.totalReturns || 0, eventTotals.netSales || 0,
+      '-', eventTotals.totalCommission || 0, eventTotals.settlementPayable || 0,
+      eventTotals.alreadyPaid || 0, eventTotals.balanceToPay || 0, '-'
+    ]);
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_Overall_Settlement_Summary_${dateStr}`, headers, rows);
+    toast('✓ Overall Settlement CSV exported successfully!', 'success');
+  } catch (err) {
+    toast('Export failed: ' + err.message, 'error');
+  }
+}
+
+function exportVendorsCSV() {
+  return exportOverallSettlementCSV();
+}
+
+// 2. Vendors Breakdown CSV Export (Filtered / Sorted)
+function exportVendorsBreakdownCSV() {
+  try {
+    const filtered = getFilteredAndSortedVendors();
+    if (filtered.length === 0) {
+      toast('No vendors matching current filter to export.', 'error');
+      return;
+    }
+
+    const headers = [
+      'Stall No', 'Vendor Name', 'Seller ID / Code', 'Orders Count', 
+      'Gross Sales (₹)', 'Returns (₹)', 'Net Sales (₹)', 
+      'Commission %', 'Commission (₹)', 'Settlement Payable (₹)', 
+      'Already Paid (₹)', 'Balance to Pay (₹)', 'Status'
+    ];
+
+    const rows = filtered.map(item => [
+      item.vendor.stallNo || '-',
+      item.vendor.name || '-',
+      item.vendor.webkulSellerId || item.vendor.code || '-',
+      item.ordersCount || 0,
+      item.grossSales || 0,
+      item.returnsAmount || 0,
+      item.netSales || 0,
+      (item.commissionPct || 15) + '%',
+      item.commissionAmount || 0,
+      item.settlementPayable || 0,
+      item.alreadyPaid || 0,
+      item.balanceToPay || 0,
+      item.status || 'Open'
+    ]);
+
+    const totOrders = filtered.reduce((s, it) => s + (it.ordersCount || 0), 0);
+    const totGross = filtered.reduce((s, it) => s + (it.grossSales || 0), 0);
+    const totReturns = filtered.reduce((s, it) => s + (it.returnsAmount || 0), 0);
+    const totNet = filtered.reduce((s, it) => s + (it.netSales || 0), 0);
+    const totComm = filtered.reduce((s, it) => s + (it.commissionAmount || 0), 0);
+    const totPayable = filtered.reduce((s, it) => s + (it.settlementPayable || 0), 0);
+    const totPaid = filtered.reduce((s, it) => s + (it.alreadyPaid || 0), 0);
+    const totBal = filtered.reduce((s, it) => s + (it.balanceToPay || 0), 0);
+
+    rows.push([
+      `TOTALS (${filtered.length} Vendors)`, 'FILTERED TOTALS', '-', totOrders,
+      totGross, totReturns, totNet, '-', totComm, totPayable, totPaid, totBal, '-'
+    ]);
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_Vendors_Breakdown_${dateStr}`, headers, rows);
+    toast(`✓ Exported ${filtered.length} vendors breakdown to CSV!`, 'success');
+  } catch (err) {
+    toast('Export failed: ' + err.message, 'error');
+  }
+}
+
+// 3. Vendor Bills CSV Export (Single Vendor Drilldown)
+async function exportVendorBillsCSV(vendorId) {
+  try {
+    const targetVendorId = vendorId || state.selectedVendorId;
+    if (!targetVendorId) {
+      toast('No vendor selected for bills export.', 'error');
+      return;
+    }
+
+    toast('Preparing vendor bills export...', 'info');
+    let vendorData = state.selectedVendorData;
+    if (!vendorData || vendorData.vendor.id !== targetVendorId) {
+      const res = await fetch(`/api/vendors/${encodeURIComponent(targetVendorId)}`);
+      vendorData = await res.json();
+    }
+
+    const v = vendorData.vendor || {};
+    const bills = vendorData.bills || vendorData.billRows || [];
+
+    const headers = [
+      'Bill-Book No', 'Amount (₹)', 'Payment Mode / Ref', 'Shopify Order Ref', 
+      'Status', 'Customer Name', 'Customer Phone', 'Date (IST)', 'Stall No', 'Vendor Name'
+    ];
+
+    const rows = bills.map(b => [
+      b.billCopyNo || b.billNo || '-',
+      b.billAmount || b.amount || 0,
+      (b.paymentMode || 'Cash') + (b.paymentOrderRef ? ` (${b.paymentOrderRef})` : ''),
+      b.shopifyOrderId ? `#${b.shopifyOrderId}` : 'Pending',
+      b.isVoid ? 'Voided' : (b.status || 'Active'),
+      b.customerName || '-',
+      b.customerPhone || '-',
+      formatDate(b.createdAt || b.date),
+      v.stallNo || '-',
+      v.name || '-'
+    ]);
+
+    const cleanStall = (v.stallNo || 'Vendor').replace(/\s+/g, '_');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_Bills_${cleanStall}_${dateStr}`, headers, rows);
+    toast(`✓ Exported ${bills.length} bills for ${v.name}!`, 'success');
+  } catch (err) {
+    toast('Bills export failed: ' + err.message, 'error');
+  }
+}
+
+// 4. Orders Management CSV Export
+async function exportOrdersManagementCSV() {
+  try {
+    toast('Preparing Orders CSV export...', 'info');
+    let orders = ordersManagementState.ordersList;
+    if (!orders || orders.length === 0) {
+      const res = await fetch('/api/orders');
+      orders = await res.json();
+    }
+
+    const headers = [
+      'Bill No', 'Date (IST)', 'Customer Name', 'Customer Phone', 'Stall No(s)', 
+      'Vendor(s)', 'Gross Amount (₹)', 'Payable Amount (₹)', 'Payment Method', 
+      'Payment ID / Ref', 'Internal Status', 'Shopify Order #', 'Shopify Sync Status'
+    ];
+
+    const rows = (orders || []).map(o => {
+      let stalls = o.stallNo || '';
+      let vendors = o.vendorName || '';
+      if (Array.isArray(o.vendorAllocations) && o.vendorAllocations.length > 0) {
+        stalls = o.vendorAllocations.map(a => a.stallNo).filter(Boolean).join('; ');
+        vendors = o.vendorAllocations.map(a => a.vendorName).filter(Boolean).join('; ');
+      }
+
+      return [
+        o.billNo || o.id,
+        formatDate(o.createdAt),
+        o.customer?.name || 'Walk-in',
+        o.customer?.phone || '-',
+        stalls || 'Stall TBD',
+        vendors || 'Unassigned',
+        o.totals?.grossAmount || 0,
+        o.totals?.payable || o.totalPayable || 0,
+        o.payment?.method || 'Prepaid',
+        o.payment?.paymentId || '-',
+        o.status || 'PENDING_APPROVAL',
+        o.shopifyOrderNumber ? `#${o.shopifyOrderNumber}` : (o.shopifyOrderId ? `#${o.shopifyOrderId}` : 'Not Pushed'),
+        o.shopifySyncStatus || 'PENDING'
+      ];
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_Orders_Management_${dateStr}`, headers, rows);
+    toast(`✓ Exported ${rows.length} internal orders to CSV!`, 'success');
+  } catch (err) {
+    toast('Orders export failed: ' + err.message, 'error');
+  }
+}
+
+// 5. Payouts Management CSV Export
+async function exportPayoutsManagementCSV() {
+  try {
+    toast('Preparing Payouts CSV export...', 'info');
+    const res = await fetch('/api/payouts');
+    const payouts = await res.json();
+
+    const headers = [
+      'Payout ID', 'Date (IST)', 'Stall No', 'Vendor Name', 'Amount (₹)', 
+      'Payment Mode', 'Reference / UTR', 'Orders Count', 'Allocated Orders List', 
+      'Notes', 'Disbursed By'
+    ];
+
+    const rows = (payouts || []).map(p => [
+      p.id,
+      formatDate(p.createdAt || p.date),
+      p.vendorStall || p.stallNo || '-',
+      p.vendorName || '-',
+      p.amount || 0,
+      p.mode || p.paymentMode || '-',
+      p.reference || p.referenceNo || p.utr || '-',
+      (p.allocations || p.allocatedOrderIds || []).length,
+      (p.allocations || p.allocatedOrderIds || []).map(a => a.billNo || a.orderId || a).join('; '),
+      p.notes || '',
+      p.createdByName || p.createdBy || 'Finance'
+    ]);
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_Payouts_History_${dateStr}`, headers, rows);
+    toast(`✓ Exported ${rows.length} payouts to CSV!`, 'success');
+  } catch (err) {
+    toast('Payouts export failed: ' + err.message, 'error');
+  }
+}
+
+// 6. Vendor Directory CSV Export
+async function exportVendorDirectoryCSV() {
+  try {
+    toast('Preparing Vendor Directory CSV export...', 'info');
+    const res = await fetch('/api/vendors?includeInactive=true');
+    const data = await res.json();
+    const vendors = (data && data.vendors) ? data.vendors : [];
+
+    const headers = [
+      'Stall No', 'Vendor Name', 'Vendor Code / ID', 'Category', 'Commission %', 
+      'Phone / UPI', 'Status', 'Total Orders', 'Gross Sales (₹)', 'Balance to Pay (₹)'
+    ];
+
+    const rows = vendors.map(vObj => {
+      const v = vObj.vendor || vObj;
+      const isActive = v.active !== false;
+      return [
+        v.stallNo || 'Stall TBD',
+        v.name || '-',
+        v.id || v.code || '-',
+        v.category || 'Retail',
+        (v.commissionPct || 15) + '%',
+        v.phone || v.upiId || '-',
+        isActive ? 'Active' : 'Deactivated',
+        vObj.ordersCount || 0,
+        vObj.grossSales || 0,
+        vObj.balanceToPay || 0
+      ];
+    });
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_Vendor_Directory_${dateStr}`, headers, rows);
+    toast(`✓ Exported ${rows.length} directory vendors to CSV!`, 'success');
+  } catch (err) {
+    toast('Vendor Directory export failed: ' + err.message, 'error');
+  }
+}
+
+// 7. Audit Log CSV Export
+async function exportAuditLogCSV() {
+  try {
+    toast('Preparing Audit Log CSV export...', 'info');
+    const res = await fetch('/api/audit-logs');
+    const logs = await res.json();
+
+    const headers = [
+      'Timestamp (IST)', 'User / Staff', 'Action', 'Entity Type', 
+      'Entity ID', 'Field Changed', 'Old Value', 'New Value', 'Reason / Notes'
+    ];
+
+    const rows = (logs || []).map(l => [
+      formatDate(l.timestamp),
+      l.user || 'System',
+      l.action || '-',
+      l.entity || '-',
+      l.entityId || '-',
+      l.field || '-',
+      l.oldValue || '-',
+      l.newValue || '-',
+      l.reason || '-'
+    ]);
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_System_Audit_Log_${dateStr}`, headers, rows);
+    toast(`✓ Exported ${rows.length} audit entries to CSV!`, 'success');
+  } catch (err) {
+    toast('Audit log export failed: ' + err.message, 'error');
+  }
+}
+
+// -------------------------------------------------------------
 // Initialization
 // -------------------------------------------------------------
 async function init() {
@@ -390,6 +731,16 @@ async function init() {
   window.handleRoleTemplateChange = handleRoleTemplateChange;
   window.toggleAllScopesCheckboxes = toggleAllScopesCheckboxes;
   window.copyTextToClipboard = copyTextToClipboard;
+  window.downloadDataAsCSV = downloadDataAsCSV;
+  window.handleVendorLinkClick = handleVendorLinkClick;
+  window.exportOverallSettlementCSV = exportOverallSettlementCSV;
+  window.exportVendorsCSV = exportVendorsCSV;
+  window.exportVendorsBreakdownCSV = exportVendorsBreakdownCSV;
+  window.exportVendorBillsCSV = exportVendorBillsCSV;
+  window.exportOrdersManagementCSV = exportOrdersManagementCSV;
+  window.exportPayoutsManagementCSV = exportPayoutsManagementCSV;
+  window.exportVendorDirectoryCSV = exportVendorDirectoryCSV;
+  window.exportAuditLogCSV = exportAuditLogCSV;
 }
 
 function updateUserChipUI() {
@@ -1454,12 +1805,19 @@ function getFilteredAndSortedVendors() {
 }
 
 function renderVendorTableRowHTML(item) {
+  const vendorLink = `#vendors?vendorId=${encodeURIComponent(item.vendor.id)}`;
   return `
     <tr>
-      <td><strong style="color: var(--notion-primary); font-weight: 600;">${item.vendor.stallNo}</strong></td>
       <td>
-        <div style="font-weight: 600; color: var(--notion-ink);">${item.vendor.name}</div>
-        <div style="font-size: 0.72rem; color: var(--notion-muted);">${item.vendor.webkulSellerId}</div>
+        <a href="${vendorLink}" onclick="handleVendorLinkClick(event, '${item.vendor.id}')" style="text-decoration: none; color: inherit; cursor: pointer;">
+          <strong style="color: var(--notion-primary); font-weight: 600;">${escapeHtml(item.vendor.stallNo)}</strong>
+        </a>
+      </td>
+      <td>
+        <a href="${vendorLink}" onclick="handleVendorLinkClick(event, '${item.vendor.id}')" style="text-decoration: none; color: inherit; cursor: pointer;">
+          <div style="font-weight: 600; color: var(--notion-ink);">${escapeHtml(item.vendor.name)}</div>
+          <div style="font-size: 0.72rem; color: var(--notion-muted);">${escapeHtml(item.vendor.webkulSellerId || '')}</div>
+        </a>
       </td>
       <td class="font-mono">${item.ordersCount}</td>
       <td class="font-mono">${formatINR(item.grossSales)}</td>
@@ -1478,9 +1836,9 @@ function renderVendorTableRowHTML(item) {
         </span>
       </td>
       <td>
-        <button class="btn btn-primary btn-sm btn-view-details" onclick="selectVendor('${item.vendor.id}')">
+        <a href="${vendorLink}" class="btn btn-primary btn-sm btn-view-details" onclick="handleVendorLinkClick(event, '${item.vendor.id}')" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">
           View Details →
-        </button>
+        </a>
       </td>
     </tr>
   `;
@@ -1608,9 +1966,9 @@ function renderVendorsListView() {
             <option value="Partly paid" ${state.statusFilter === 'Partly paid' ? 'selected' : ''}>Partly Paid</option>
             <option value="Settled" ${state.statusFilter === 'Settled' ? 'selected' : ''}>Settled</option>
           </select>
-          <a href="/api/reports/all-vendors-summary.csv" class="btn btn-outline btn-sm">
+          <button class="btn btn-outline btn-sm" onclick="exportVendorsBreakdownCSV()">
             📥 Export Excel / CSV
-          </a>
+          </button>
         </div>
       </div>
 
@@ -1855,6 +2213,9 @@ function renderVendorDetailView() {
       </div>
 
       <div class="vendor-actions-group">
+        <button class="btn btn-outline btn-sm" onclick="exportVendorBillsCSV('${v.id}')">
+          📥 Export Bills CSV
+        </button>
         <button class="btn btn-outline btn-sm" onclick="openPrintableStatement('${v.id}')">
           🖨️ Printable Vendor Statement (PDF)
         </button>
@@ -3299,6 +3660,9 @@ async function renderOrdersManagementView() {
               🚀 Bulk Approve & Push to Shopify
             </button>
           ` : ''}
+          <button class="btn btn-outline btn-sm" onclick="exportOrdersManagementCSV()">
+            📥 Export Orders CSV
+          </button>
           <button class="btn btn-outline btn-sm" onclick="renderOrdersManagementView()">
             🔄 Refresh Orders
           </button>
@@ -3981,6 +4345,9 @@ async function renderVendorManagementView() {
       </div>
 
       <div style="display: flex; gap: 10px; align-items: center;">
+        <button class="btn btn-outline btn-sm" onclick="exportVendorDirectoryCSV()">
+          📥 Export Directory CSV
+        </button>
         ${getUserRole() === 'super_admin' ? `
           <button class="btn btn-primary btn-sm" onclick="openAddVendorModal()">
             ➕ Add New Vendor
@@ -4296,6 +4663,9 @@ async function renderPayoutManagementView() {
       </div>
 
       <div style="display: flex; gap: 10px; align-items: center;">
+        <button class="btn btn-outline btn-sm" onclick="exportPayoutsManagementCSV()">
+          📥 Export Payouts CSV
+        </button>
         ${(getUserRole() === 'finance' || getUserRole() === 'super_admin') ? `
           <button class="btn btn-primary btn-sm" onclick="openOrderPayoutModal()">
             ➕ Record Order-Linked Payout
@@ -4321,24 +4691,13 @@ async function loadAndRenderPayoutMgmt() {
 
   try {
     // 1. Fetch vendor summary for overall metrics
-    const vRes = await fetch('/api/vendors');
+    const [vRes, pRes] = await Promise.all([
+      fetch('/api/vendors'),
+      fetch('/api/payouts')
+    ]);
     const vData = await vRes.json();
     const totals = vData.eventTotals || {};
-
-    // 2. Collect all payouts across vendors
-    const allPayouts = [];
-    if (vData && vData.vendors) {
-      for (const vObj of vData.vendors) {
-        const v = vObj.vendor || vObj;
-        const res = await fetch(`/api/vendors/${v.id}`);
-        const single = await res.json();
-        if (single.payouts && single.payouts.length > 0) {
-          single.payouts.forEach(p => {
-            allPayouts.push({ ...p, vendorName: v.name, stallNo: v.stallNo });
-          });
-        }
-      }
-    }
+    const allPayouts = await pRes.json();
 
     allPayouts.sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
 
@@ -4880,13 +5239,20 @@ async function renderAuditLogView() {
   if (!main) return;
 
   main.innerHTML = `
-    <div class="view-header" style="margin-bottom: 24px;">
-      <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
-        📜 System Audit Log
-      </h1>
-      <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
-        Immutable audit trail of order edits, Super Admin approvals, Shopify push attempts, and payout disbursements.
-      </p>
+    <div class="view-header" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
+          📜 System Audit Log
+        </h1>
+        <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
+          Immutable audit trail of order edits, Super Admin approvals, Shopify push attempts, and payout disbursements.
+        </p>
+      </div>
+      <div>
+        <button class="btn btn-outline btn-sm" onclick="exportAuditLogCSV()">
+          📥 Export Audit Log CSV
+        </button>
+      </div>
     </div>
 
     <div id="auditLogContainer">

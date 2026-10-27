@@ -1127,8 +1127,39 @@ app.get('/api/vendors/:id/unpaid-orders', (req, res) => {
   }
 });
 
+app.get('/api/payouts', (req, res) => {
+  try {
+    const actor = req.user || getRequestUser(req);
+    const { startDate, endDate, vendorId } = req.query;
+    let payouts = [...(store.data.payouts || [])];
+
+    if (vendorId) {
+      payouts = payouts.filter(p => p.vendorId === vendorId);
+    }
+    if (actor && actor.role === 'vendor' && actor.vendorId) {
+      payouts = payouts.filter(p => p.vendorId === actor.vendorId);
+    }
+    if (startDate || endDate) {
+      payouts = store.filterByDateRange(payouts, 'date', startDate, endDate);
+    }
+
+    const populated = payouts.map(p => {
+      const v = store.data.vendors.find(item => item.id === p.vendorId);
+      return {
+        ...p,
+        vendorName: v ? v.name : (p.vendorName || p.vendorId),
+        vendorStall: v ? v.stallNo : (p.vendorStall || '-')
+      };
+    });
+
+    res.json(populated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/payouts', (req, res) => {
-  const actor = req.user || currentUser;
+  const actor = req.user || getRequestUser(req);
   if (actor.role !== 'finance' && actor.role !== 'super_admin') {
     return res.status(403).json({ error: 'Only Finance or Super Admin can record payouts.' });
   }
