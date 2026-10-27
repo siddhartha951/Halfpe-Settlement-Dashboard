@@ -655,6 +655,12 @@ app.put('/api/orders/:id', (req, res) => {
   if (activeUser.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can edit internal order details.' });
   }
+
+  const { customer, vendorId, status } = req.body;
+  if (customer && customer.name !== undefined && !String(customer.name).trim()) {
+    return res.status(400).json({ error: 'Customer name cannot be empty.' });
+  }
+
   try {
     const updated = store.updateInternalOrder(req.params.id, req.body, activeUser);
     if (!updated) return res.status(404).json({ error: 'Order not found' });

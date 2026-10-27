@@ -1924,14 +1924,14 @@ function renderBillsLedgerTab(bills, vendorId) {
         <table class="data-table">
           <thead>
             <tr>
-              <th>HalfPe Bill Copy No</th>
-              <th>Bill Amount</th>
-              <th>Payment Mode</th>
-              <th>Date & Time (IST)</th>
+              <th style="min-width: 140px;">Bill-Book No.</th>
+              <th style="min-width: 110px; text-align: right;">Amount (₹)</th>
+              <th>Payment Mode / Ref</th>
               <th>Shopify Order Ref</th>
-              <th>Customer Details</th>
-              <th>Source</th>
               <th>Status</th>
+              <th>Customer Details</th>
+              <th>Date & Time (IST)</th>
+              <th>Source</th>
               <th>Last Edited By</th>
               <th>Actions</th>
             </tr>
@@ -1942,19 +1942,33 @@ function renderBillsLedgerTab(bills, vendorId) {
             ` : bills.map(b => `
               <tr class="${b.isVoid ? 'row-voided' : ''}">
                 <td>
-                  <strong style="color: #818CF8; font-family: var(--font-mono);">${b.billCopyNo}</strong>
+                  <strong style="color: #4338CA; font-family: var(--font-mono); font-size: 0.88rem;">${escapeHtml(b.billCopyNo)}</strong>
                   ${b.mismatchFlag ? '<span class="badge badge-mismatch">MISMATCH</span>' : ''}
                 </td>
-                <td class="font-mono"><strong>${formatINR(b.billAmount)}</strong></td>
+                <td class="font-mono" style="text-align: right; font-weight: 700; color: #111827; font-size: 0.9rem;">
+                  ${formatINR(b.billAmount)}
+                </td>
                 <td>
                   <span class="badge ${b.paymentMode.toLowerCase().includes('cash') ? 'badge-status-open' : 'badge-status-settled'}">
-                    ${b.paymentMode}
+                    ${escapeHtml(b.paymentMode)}
                   </span>
+                  <div style="font-family: var(--font-mono); font-size: 0.72rem; color: #64748B; margin-top: 2px;">
+                    ${escapeHtml(b.paymentOrderRef || '-')}
+                  </div>
                 </td>
-                <td style="font-size: 0.8rem; color: var(--text-secondary);">${formatDate(b.createdAt)}</td>
                 <td>
-                  <span style="font-family: var(--font-mono); color: #60A5FA;">${b.paymentOrderRef}</span>
-                  ${b.shopifyOrderId ? `<div style="font-size: 0.7rem; color: var(--text-muted);">(ID: ${b.shopifyOrderId})</div>` : ''}
+                  ${b.shopifyOrderId ? `
+                    <span style="font-family: var(--font-mono); color: #0284C7; font-weight: 600;">#${escapeHtml(b.shopifyOrderId)}</span>
+                  ` : `<span style="color: var(--text-muted); font-size: 0.8rem;">Pending Push</span>`}
+                </td>
+                <td class="no-strike">
+                  <span class="badge ${
+                    b.status === 'Paid' ? 'badge-status-paid' :
+                    b.status.includes('Returned') ? 'badge-status-partly' : 'badge-status-voided'
+                  }">
+                    ${b.status}
+                  </span>
+                  ${b.voidReason ? `<div style="font-size: 0.7rem; color: #F87171;">Reason: ${escapeHtml(b.voidReason)}</div>` : ''}
                 </td>
                 <td>
                   <div>${b.customerName}</div>
@@ -3819,9 +3833,14 @@ async function openEditOrderModal(orderId) {
 async function submitEditOrder(e, orderId) {
   e.preventDefault();
   const vendorId = document.getElementById('editOrderVendorId').value;
-  const customerName = document.getElementById('editOrderCustName').value;
-  const customerPhone = document.getElementById('editOrderCustPhone').value;
+  const customerName = (document.getElementById('editOrderCustName').value || '').trim();
+  const customerPhone = (document.getElementById('editOrderCustPhone').value || '').trim();
   const status = document.getElementById('editOrderStatus').value;
+
+  if (!customerName) {
+    toast('Customer name is required.', 'error');
+    return;
+  }
 
   try {
     const res = await fetch(`/api/orders/${orderId}`, {
@@ -3835,9 +3854,13 @@ async function submitEditOrder(e, orderId) {
     });
     const data = await res.json();
     if (data.success) {
-      toast('✓ Order details updated successfully!', 'success');
+      toast('✓ Order updated successfully', 'success');
       closeModal();
-      await loadAndRenderOrdersTable();
+      if (state.activeTab !== 'orders') {
+        switchMainTab('orders');
+      } else {
+        await loadAndRenderOrdersTable();
+      }
     } else {
       toast(`Update failed: ${data.error}`, 'error');
     }
