@@ -521,6 +521,7 @@ app.post('/api/vendors', (req, res) => {
   }
   try {
     const newVendor = store.addVendor(req.body, actor);
+    broadcastEvent('VENDOR_ADDED', { vendor: newVendor });
     res.status(201).json({ success: true, vendor: newVendor });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -534,6 +535,7 @@ app.put('/api/vendors/:id', (req, res) => {
   }
   try {
     const updated = store.updateVendor(req.params.id, req.body, actor);
+    broadcastEvent('VENDOR_UPDATED', { vendor: updated });
     res.json({ success: true, vendor: updated });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -548,6 +550,7 @@ app.post('/api/vendors/:id/toggle-status', (req, res) => {
   try {
     const { active } = req.body;
     const vendor = store.toggleVendorStatus(req.params.id, active, actor);
+    broadcastEvent('VENDOR_STATUS_CHANGED', { vendor });
     res.json({ success: true, vendor });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -578,8 +581,102 @@ app.patch('/api/vendors/:id/commission', (req, res) => {
     reason || 'Commission rate updated by Super Admin'
   );
   store.save();
+  broadcastEvent('VENDOR_COMMISSION_UPDATED', { vendor });
 
   res.json({ success: true, vendor, summary: store.getVendorSummary(id) });
+});
+
+// Bulk action on multiple vendors (Super Admin only - F1)
+app.post('/api/vendors/bulk-action', (req, res) => {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can perform bulk vendor actions.' });
+  }
+
+  const { action, vendorIds, commissionPct } = req.body;
+  if (!Array.isArray(vendorIds) || vendorIds.length === 0) {
+    return res.status(400).json({ error: 'vendorIds array is required.' });
+  }
+
+  let updatedCount = 0;
+  vendorIds.forEach(id => {
+    const v = store.data.vendors.find(item => item.id === id);
+    if (!v) return;
+
+    if (action === 'activate') {
+      v.active = true;
+      store.logAudit(actor.name, 'BULK_ACTIVATE_VENDOR', 'vendor', v.id, 'active', false, true, 'Bulk activation');
+      updatedCount++;
+    } else if (action === 'deactivate') {
+      v.active = false;
+      store.logAudit(actor.name, 'BULK_DEACTIVATE_VENDOR', 'vendor', v.id, 'active', true, false, 'Bulk deactivation');
+      updatedCount++;
+    } else if (action === 'update_commission' && commissionPct !== undefined) {
+      const oldPct = v.commissionPct;
+      v.commissionPct = parseFloat(commissionPct);
+      store.logAudit(actor.name, 'BULK_UPDATE_COMMISSION', 'vendor', v.id, 'commissionPct', oldPct, v.commissionPct, 'Bulk commission update');
+      updatedCount++;
+    }
+  });
+
+  store.save();
+  broadcastEvent('VENDORS_BULK_UPDATED', { action, count: updatedCount });
+  res.json({ success: true, updatedCount });
+});
+
+// Bulk import vendors from parsed Excel / CSV sheet (Super Admin only - F2)
+app.post('/api/vendors/bulk-import', (req, res) => {
+  const actor = req.user || getRequestUser(req);
+  if (actor.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Unauthorized: Only Super Admin can bulk import vendors.' });
+  }
+
+  const { vendors } = req.body;
+  if (!Array.isArray(vendors) || vendors.length === 0) {
+    return res.status(400).json({ error: 'vendors array is required.' });
+  }
+
+  const createdList = [];
+  vendors.forEach(vData => {
+    if (!vData.name && !vData.stallNo) return;
+    try {
+      // Check if vendor with same stallNo or code already exists
+      const existing = store.data.vendors.find(v => 
+        (vData.stallNo && v.stallNo.toLowerCase() === String(vData.stallNo).trim().toLowerCase()) ||
+        (vData.code && v.code.toLowerCase() === String(vData.code).trim().toLowerCase())
+      );
+
+      if (existing) {
+        // Update existing vendor
+        if (vData.name) existing.name = String(vData.name).trim();
+        if (vData.category) existing.category = String(vData.category).trim();
+        if (vData.commissionPct !== undefined && !isNaN(parseFloat(vData.commissionPct))) {
+          existing.commissionPct = parseFloat(vData.commissionPct);
+        }
+        if (vData.phone) existing.phone = String(vData.phone).trim();
+        if (vData.upiId) existing.upiId = String(vData.upiId).trim();
+        existing.active = true;
+        createdList.push(existing);
+      } else {
+        const added = store.addVendor({
+          stallNo: vData.stallNo || 'Stall TBD',
+          name: vData.name || 'Unnamed Vendor',
+          code: vData.code || ('V' + Math.floor(100 + Math.random() * 900)),
+          category: vData.category || 'Retail',
+          commissionPct: vData.commissionPct !== undefined ? parseFloat(vData.commissionPct) : 15,
+          phone: vData.phone || '',
+          upiId: vData.upiId || ''
+        }, actor);
+        createdList.push(added);
+      }
+    } catch (e) {
+      console.warn('[BulkImportVendor] Skip row error:', e.message);
+    }
+  });
+
+  store.save();
+  broadcastEvent('VENDORS_BULK_IMPORTED', { count: createdList.length });
+  res.json({ success: true, count: createdList.length, vendors: createdList });
 });
 
 // -------------------------------------------------------------

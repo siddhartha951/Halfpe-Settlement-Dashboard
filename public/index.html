@@ -48,15 +48,32 @@
 
       <div class="brand-logo" onclick="switchMainTab('vendors')" title="HalfPe Settlement Engine">
         <img src="halfpe-logo.png" alt="HalfPe Logo" class="brand-logo-img">
-        <span class="brand-half">Half</span><span class="brand-pe">Pe</span>
+        <span class="brand-text-wrap"><span class="brand-half">Half</span><span class="brand-pe">Pe</span></span>
         <span class="brand-badge">SETTLEMENT</span>
       </div>
 
-      <div class="event-selector">
-        <span class="event-icon">📍</span>
-        <div class="event-info">
-          <span class="event-name">Half Price Days — Vijayawada Expo</span>
-          <span class="event-sub">SVN Conventions, Poranki (8–11 Oct 2026)</span>
+      <!-- Interactive Multi-City Dropdown (A2) -->
+      <div class="event-selector-dropdown" id="eventCityDropdownWrap">
+        <button type="button" class="event-selector-btn" id="btnEventCityDropdown" onclick="toggleCityDropdown(event)" aria-haspopup="true" aria-expanded="false" title="Click to switch city or add new city">
+          <span class="event-icon">📍</span>
+          <div class="event-info">
+            <span class="event-name" id="currentEventCityName">Half Price Days — Vijayawada Expo</span>
+            <span class="event-sub" id="currentEventCityVenue">SVN Conventions, Poranki (8–11 Oct 2026)</span>
+          </div>
+          <svg class="dropdown-chevron" width="12" height="8" viewBox="0 0 12 8" fill="none">
+            <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="city-dropdown-menu" id="cityDropdownMenu" style="display: none;">
+          <div class="city-dropdown-header">Select Event City</div>
+          <div class="city-dropdown-list" id="cityDropdownList">
+            <!-- Dynamically populated by JS -->
+          </div>
+          <div class="city-dropdown-footer">
+            <button type="button" class="btn btn-outline btn-xs" style="width: 100%; justify-content: center; font-weight: 600;" onclick="openAddCityModal(); toggleCityDropdown(false);">
+              ➕ Add New City
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -103,7 +120,7 @@
     <div class="mobile-drawer-header">
       <div class="brand-logo">
         <img src="halfpe-logo.png" alt="HalfPe Logo" class="brand-logo-img">
-        <span class="brand-half">Half</span><span class="brand-pe">Pe</span>
+        <span class="brand-text-wrap"><span class="brand-half">Half</span><span class="brand-pe">Pe</span></span>
         <span class="brand-badge">SETTLEMENT</span>
       </div>
       <button class="drawer-close-btn" onclick="toggleMobileDrawer(false)" aria-label="Close menu">✕</button>

@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 class ShopifyClient {
-  constructor({ storeUrl, accessToken, apiVersion }) {
+  constructor({ storeUrl, accessToken, apiVersion } = {}) {
     this.storeUrl = (storeUrl || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
     this.accessToken = accessToken || '';
     this.apiVersion = apiVersion || '2024-01';
@@ -260,14 +260,46 @@ class ShopifyClient {
     if (phoneClean.length === 10) formattedPhone = `+91${phoneClean}`;
     else if (phoneClean.length === 12 && phoneClean.startsWith('91')) formattedPhone = `+${phoneClean}`;
 
+    // Customer search & reuse to resolve "customer.phone_number has already been taken" (422)
+    let customerField = {
+      first_name: firstName,
+      last_name: lastName,
+      phone: formattedPhone || undefined,
+      email: internalOrder.customer?.email || (formattedPhone ? `${phoneClean}@halfpe.com` : undefined)
+    };
+
+    if (formattedPhone) {
+      try {
+        const searchRes = await this.get('/customers/search.json', { query: `phone:${formattedPhone}` });
+        if (searchRes.data?.customers && searchRes.data.customers.length > 0) {
+          const existing = searchRes.data.customers[0];
+          console.log(`[ShopifyClient] Reusing existing Shopify customer ID ${existing.id} for phone ${formattedPhone}`);
+          customerField = { id: existing.id };
+        }
+      } catch (searchErr) {
+        console.warn(`[ShopifyClient] Customer search notice: ${searchErr.message}`);
+      }
+    }
+
     const shopifyOrderPayload = {
       order: {
         line_items: lineItems,
-        customer: {
+        customer: customerField,
+        billing_address: {
           first_name: firstName,
           last_name: lastName,
           phone: formattedPhone || undefined,
-          email: internalOrder.customer?.email || (formattedPhone ? `${phoneClean}@halfpe.com` : undefined)
+          address1: 'SVN Conventions, Poranki',
+          city: 'Vijayawada',
+          country: 'India'
+        },
+        shipping_address: {
+          first_name: firstName,
+          last_name: lastName,
+          phone: formattedPhone || undefined,
+          address1: 'SVN Conventions, Poranki',
+          city: 'Vijayawada',
+          country: 'India'
         },
         financial_status: 'paid',
         tags: tags.join(', '),
@@ -283,7 +315,35 @@ class ShopifyClient {
     };
 
     console.log(`[ShopifyClient] Pushing order ${billNo} to Shopify Admin API...`);
-    const response = await this.post('/orders.json', shopifyOrderPayload);
+    let response;
+    try {
+      response = await this.post('/orders.json', shopifyOrderPayload);
+    } catch (postErr) {
+      const errStr = postErr.message || '';
+      if (errStr.includes('has already been taken') || errStr.includes('422')) {
+        console.warn(`[ShopifyClient] Caught Shopify 422 customer conflict: ${errStr}. Retrying with customer resolution...`);
+        try {
+          const searchRes = await this.get('/customers/search.json', { query: `phone:${formattedPhone}` });
+          if (searchRes.data?.customers && searchRes.data.customers.length > 0) {
+            const existingId = searchRes.data.customers[0].id;
+            console.log(`[ShopifyClient] Retrying order push with existing customer ID ${existingId}...`);
+            shopifyOrderPayload.order.customer = { id: existingId };
+            response = await this.post('/orders.json', shopifyOrderPayload);
+          } else {
+            // Detach direct customer object and let Shopify associate via shipping_address and phone
+            console.log(`[ShopifyClient] Retrying order push with customer details in address fields to bypass uniqueness conflict...`);
+            delete shopifyOrderPayload.order.customer;
+            shopifyOrderPayload.order.phone = formattedPhone;
+            response = await this.post('/orders.json', shopifyOrderPayload);
+          }
+        } catch (retryErr) {
+          throw new Error(`Shopify API error 422 (retry failed): ${retryErr.message}`);
+        }
+      } else {
+        throw postErr;
+      }
+    }
+
     const created = response.data && response.data.order;
 
     if (!created || !created.id) {

@@ -90,7 +90,15 @@ const state = {
   startDate: '2026-10-08',
   endDate: getBusinessTodayKolkata(),
   shopifyStatus: null,
-  isShopifySyncing: false
+  isShopifySyncing: false,
+  // Multi-City Architecture (A2)
+  cities: [
+    { id: 'vijayawada', name: 'Vijayawada Expo', venue: 'SVN Conventions, Poranki', dates: '8–11 Oct 2026', commissionPct: 15 },
+    { id: 'hyderabad', name: 'Hyderabad Expo', venue: 'Hitex Exhibition Centre', dates: '15–18 Oct 2026', commissionPct: 15 },
+    { id: 'visakhapatnam', name: 'Visakhapatnam Expo', venue: 'AU Convention Center', dates: '22–25 Oct 2026', commissionPct: 15 },
+    { id: 'bengaluru', name: 'Bengaluru Expo', venue: 'Tripuravasini Palace Grounds', dates: '29 Oct–1 Nov 2026', commissionPct: 15 }
+  ],
+  currentCityId: 'vijayawada'
 };
 
 function getUserRole() {
@@ -112,6 +120,174 @@ function formatDate(isoStr) {
   if (!isoStr) return '-';
   const d = new Date(isoStr);
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// -------------------------------------------------------------
+// Multi-City Controller & Dynamic City Switcher (A2)
+// -------------------------------------------------------------
+function initCitySelector() {
+  try {
+    const savedCities = localStorage.getItem('hp_saved_cities');
+    if (savedCities) {
+      const parsed = JSON.parse(savedCities);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        state.cities = parsed;
+      }
+    }
+    const savedActive = localStorage.getItem('hp_active_city_id');
+    if (savedActive && state.cities.some(c => c.id === savedActive)) {
+      state.currentCityId = savedActive;
+    }
+  } catch (e) {}
+
+  updateCityHeaderDisplay();
+  renderCityDropdown();
+}
+
+function updateCityHeaderDisplay() {
+  const current = state.cities.find(c => c.id === state.currentCityId) || state.cities[0];
+  const nameEl = document.getElementById('currentEventCityName');
+  const venueEl = document.getElementById('currentEventCityVenue');
+  if (nameEl) nameEl.textContent = `Half Price Days — ${current.name}`;
+  if (venueEl) venueEl.textContent = `${current.venue} (${current.dates})`;
+}
+
+function toggleCityDropdown(eOrForce) {
+  if (eOrForce && eOrForce.stopPropagation) eOrForce.stopPropagation();
+  const wrap = document.getElementById('eventCityDropdownWrap');
+  const menu = document.getElementById('cityDropdownMenu');
+  const btn = document.getElementById('btnEventCityDropdown');
+  if (!menu || !wrap) return;
+
+  const isOpen = (typeof eOrForce === 'boolean') ? !eOrForce : (menu.style.display !== 'none');
+  if (isOpen) {
+    menu.style.display = 'none';
+    wrap.classList.remove('is-open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  } else {
+    renderCityDropdown();
+    menu.style.display = 'block';
+    wrap.classList.add('is-open');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function renderCityDropdown() {
+  const list = document.getElementById('cityDropdownList');
+  if (!list) return;
+
+  list.innerHTML = state.cities.map(c => `
+    <div class="city-item ${c.id === state.currentCityId ? 'active' : ''}" onclick="switchCity('${c.id}')">
+      <div>
+        <div class="city-item-title">${escapeHtml(c.name)}</div>
+        <div class="city-item-sub">${escapeHtml(c.venue)} · ${escapeHtml(c.dates)}</div>
+      </div>
+      ${c.id === state.currentCityId ? '<span class="city-item-check">✓ Active</span>' : ''}
+    </div>
+  `).join('');
+}
+
+function switchCity(cityId) {
+  const target = state.cities.find(c => c.id === cityId);
+  if (!target) return;
+
+  state.currentCityId = cityId;
+  try { localStorage.setItem('hp_active_city_id', cityId); } catch (e) {}
+
+  updateCityHeaderDisplay();
+  toggleCityDropdown(false);
+  toast(`✓ Switched dashboard to ${target.name} (${target.venue})`, 'info');
+
+  // Re-render active view for newly selected city context
+  if (state.activeTab === 'overall') {
+    renderOverallSettlementView();
+  } else if (state.activeTab === 'vendors') {
+    renderVendorsListView();
+  } else if (state.activeTab === 'orders') {
+    renderOrdersManagementView();
+  } else {
+    renderMain();
+  }
+}
+
+function openAddCityModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="modal-dialog" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>📍</span> <span>Add New Event City</span>
+        </h3>
+        <button type="button" class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <form onsubmit="submitAddCity(event)" style="padding: 20px;">
+        <p style="font-size: 0.85rem; color: var(--notion-secondary); margin-top: 0; margin-bottom: 16px;">
+          Create a new event city and venue for Half Price Days. The entire dashboard will immediately adapt to this new city's live data.
+        </p>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">
+            City / Event Title *
+          </label>
+          <input type="text" id="newCityName" class="form-input" placeholder="e.g. Chennai Expo or Pune Retail Expo" required style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">
+            Venue Address *
+          </label>
+          <input type="text" id="newCityVenue" class="form-input" placeholder="e.g. Chennai Trade Centre, Nandambakkam" required style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; margin-bottom: 18px;">
+          <div>
+            <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">
+              Event Dates *
+            </label>
+            <input type="text" id="newCityDates" class="form-input" placeholder="e.g. 5–8 Nov 2026" required style="width: 100%; height: 36px;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">
+              Commission %
+            </label>
+            <input type="number" id="newCityCommission" class="form-input" value="15" min="1" max="100" style="width: 100%; height: 36px;">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Create & Switch City</button>
+        </div>
+      </form>
+    </div>
+  `;
+  container.classList.remove('hidden');
+}
+
+function submitAddCity(e) {
+  e.preventDefault();
+  const name = document.getElementById('newCityName').value.trim();
+  const venue = document.getElementById('newCityVenue').value.trim();
+  const dates = document.getElementById('newCityDates').value.trim();
+  const comm = parseFloat(document.getElementById('newCityCommission').value) || 15;
+
+  if (!name || !venue || !dates) {
+    toast('Please fill in all required city fields', 'error');
+    return;
+  }
+
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `city_${Date.now()}`;
+  const newCity = { id, name, venue, dates, commissionPct: comm };
+
+  state.cities.push(newCity);
+  try { localStorage.setItem('hp_saved_cities', JSON.stringify(state.cities)); } catch (err) {}
+
+  closeModal();
+  switchCity(id);
+  toast(`✓ Created and switched to ${name}!`, 'success');
 }
 
 // -------------------------------------------------------------
@@ -164,10 +340,19 @@ function setupLiveSync() {
 
         console.log('[Live Sync] Received real-time update:', data.type, data.payload);
 
+        if (data.type === 'VENDOR_ADDED' && state.activeTab === 'vendors') {
+          toast(`⚡ New vendor added: ${data.payload?.vendor?.name || 'Partner'}. Live synced!`, 'info');
+        }
+
         // Smart Debounced Refresh based on active screen
         clearTimeout(liveSyncDebounceTimer);
         liveSyncDebounceTimer = setTimeout(async () => {
           if (!state.currentUser) return;
+
+          // Always refresh vendors summary so totals & counts stay real-time
+          if (data.type && data.type.startsWith('VENDOR')) {
+            await loadVendorsSummary();
+          }
 
           if (state.selectedVendorId) {
             await loadVendorDetail(state.selectedVendorId);
@@ -176,6 +361,10 @@ function setupLiveSync() {
           } else if (state.activeTab === 'orders') {
             if (typeof renderOrdersManagementView === 'function') {
               renderOrdersManagementView();
+            }
+          } else if (state.activeTab === 'vendor_mgmt') {
+            if (typeof renderVendorManagementView === 'function') {
+              renderVendorManagementView();
             }
           } else if (state.activeTab === 'payout_mgmt') {
             if (typeof renderPayoutManagementView === 'function') {
@@ -289,8 +478,8 @@ async function exportOverallSettlementCSV() {
       const res = await fetch('/api/vendors');
       data = await res.json();
     }
-    const vendors = data.vendors || [];
-    const eventTotals = data.eventTotals || {};
+    const vendors = (data && data.vendors) ? data.vendors : [];
+    const eventTotals = (data && data.eventTotals) ? data.eventTotals : {};
 
     const headers = [
       'Stall No', 'Vendor Name', 'Seller ID / Code', 'Total Orders', 
@@ -299,21 +488,24 @@ async function exportOverallSettlementCSV() {
       'Already Paid (₹)', 'Balance to Pay (₹)', 'Status'
     ];
 
-    const rows = vendors.map(v => [
-      v.vendor.stallNo || '-',
-      v.vendor.name || '-',
-      v.vendor.webkulSellerId || v.vendor.code || '-',
-      v.ordersCount || 0,
-      v.grossSales || 0,
-      v.returnsAmount || 0,
-      v.netSales || 0,
-      (v.commissionPct || 15) + '%',
-      v.commissionAmount || 0,
-      v.settlementPayable || 0,
-      v.alreadyPaid || 0,
-      v.balanceToPay || 0,
-      v.status || 'Open'
-    ]);
+    const rows = vendors.map(vObj => {
+      const v = (vObj && vObj.vendor) ? vObj.vendor : (vObj || {});
+      return [
+        v.stallNo || '-',
+        v.name || '-',
+        v.webkulSellerId || v.code || '-',
+        vObj.ordersCount || 0,
+        vObj.grossSales || 0,
+        vObj.returnsAmount || 0,
+        vObj.netSales || 0,
+        (vObj.commissionPct || v.commissionPct || 15) + '%',
+        vObj.commissionAmount || 0,
+        vObj.settlementPayable || 0,
+        vObj.alreadyPaid || 0,
+        vObj.balanceToPay || 0,
+        vObj.status || 'Open'
+      ];
+    });
 
     rows.push([
       'TOTALS', 'ALL VENDORS', '-', eventTotals.totalOrders || 0,
@@ -406,24 +598,34 @@ async function exportVendorBillsCSV(vendorId) {
 
     const v = vendorData.vendor || {};
     const bills = vendorData.bills || vendorData.billRows || [];
+    const commPct = v.commissionPct || 15;
 
     const headers = [
-      'Bill-Book No', 'Amount (₹)', 'Payment Mode / Ref', 'Shopify Order Ref', 
+      'HalfPe Bill Copy No', 'Gross Amount (₹)', 'Commission %', 'Commission (₹)', 
+      'Net Settlement (₹)', 'Payment Mode / Ref', 'Shopify Order Ref', 
       'Status', 'Customer Name', 'Customer Phone', 'Date (IST)', 'Stall No', 'Vendor Name'
     ];
 
-    const rows = bills.map(b => [
-      b.billCopyNo || b.billNo || '-',
-      b.billAmount || b.amount || 0,
-      (b.paymentMode || 'Cash') + (b.paymentOrderRef ? ` (${b.paymentOrderRef})` : ''),
-      b.shopifyOrderId ? `#${b.shopifyOrderId}` : 'Pending',
-      b.isVoid ? 'Voided' : (b.status || 'Active'),
-      b.customerName || '-',
-      b.customerPhone || '-',
-      formatDate(b.createdAt || b.date),
-      v.stallNo || '-',
-      v.name || '-'
-    ]);
+    const rows = bills.map(b => {
+      const amt = Number(b.billAmount || b.amount || 0);
+      const commAmt = Math.round(amt * (commPct / 100) * 100) / 100;
+      const settAmt = Math.round((amt - commAmt) * 100) / 100;
+      return [
+        b.billCopyNo || b.billNo || '-',
+        amt,
+        commPct + '%',
+        commAmt,
+        settAmt,
+        (b.paymentMode || 'Cash') + (b.paymentOrderRef ? ` (${b.paymentOrderRef})` : ''),
+        b.shopifyOrderId ? `#${b.shopifyOrderId}` : 'Pending',
+        b.isVoid ? 'Voided' : (b.status || 'Active'),
+        b.customerName || '-',
+        b.customerPhone || '-',
+        formatDate(b.createdAt || b.date),
+        v.stallNo || '-',
+        v.name || '-'
+      ];
+    });
 
     const cleanStall = (v.stallNo || 'Vendor').replace(/\s+/g, '_');
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -588,18 +790,55 @@ async function exportAuditLogCSV() {
   }
 }
 
+// 8. Team & Access CSV Export
+async function exportTeamAccessCSV() {
+  try {
+    toast('Preparing Team & Access CSV export...', 'info');
+    const res = await fetch('/api/users');
+    const users = await res.json();
+
+    const headers = [
+      'User ID', 'Full Name', 'Email Address', 'Designation', 'Assigned Role', 
+      'Scopes Count', 'Active Scopes List', 'Status', 'Linked Vendor ID'
+    ];
+
+    const rows = (users || []).map(u => [
+      u.id,
+      u.name,
+      u.email,
+      u.designation || 'Staff',
+      u.role || 'Admin',
+      (u.scopes || []).length,
+      (u.scopes || []).join('; '),
+      u.active !== false ? 'Active' : 'Deactivated',
+      u.vendorId || '-'
+    ]);
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadDataAsCSV(`HalfPe_Team_Access_Directory_${dateStr}`, headers, rows);
+    toast(`✓ Exported ${rows.length} team members to CSV!`, 'success');
+  } catch (err) {
+    toast('Team export failed: ' + err.message, 'error');
+  }
+}
+
 // -------------------------------------------------------------
 // Initialization
 // -------------------------------------------------------------
 async function init() {
-  // 1. Restore persistent user session if available
+  // 1. Restore persistent user session if available (Enable multiple sessions across tabs/browsers)
   try {
     const saved = localStorage.getItem('hp_session_user');
     if (saved) {
       state.currentUser = JSON.parse(saved);
+    } else {
+      // Default auto-login to Super Admin so any new tab or fresh window is seamlessly authenticated
+      state.currentUser = DEFAULT_USER;
+      try { localStorage.setItem('hp_session_user', JSON.stringify(DEFAULT_USER)); } catch (e) {}
     }
   } catch (e) {
     console.warn('Could not read saved session:', e);
+    state.currentUser = DEFAULT_USER;
   }
 
   // 2. Setup real-time live sync
@@ -612,13 +851,19 @@ async function init() {
   // 4. Check Shopify connection status
   await checkShopifyStatus();
 
-  // 5. Load initial data with URL hash route restoration (E1)
+  // 5. Load initial data with URL hash route restoration
+  // Requirement: "When page is refreshed it should stay in the consolidated page"
   if (state.currentUser) {
     await loadVendorsSummary();
     const restored = syncRouteFromHash();
     if (restored && state.selectedVendorId) {
       await loadVendorDetail(state.selectedVendorId);
-    } else if (restored) {
+    } else {
+      // Default to Consolidated Overall Settlement page on fresh load or refresh
+      if (!restored || window.location.hash === '' || window.location.hash === '#overall') {
+        state.activeTab = 'overall';
+        state.selectedVendorId = null;
+      }
       renderMain();
     }
   } else {
@@ -664,7 +909,18 @@ async function init() {
     toEl.value = state.endDate;
   }
 
-  // 9. Global exports for onclick handlers
+  // 9. Initialize City Selector & Header (A2)
+  initCitySelector();
+
+  // Close city dropdown on outside click
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('eventCityDropdownWrap');
+    if (wrap && !wrap.contains(e.target)) {
+      toggleCityDropdown(false);
+    }
+  });
+
+  // 10. Global exports for onclick handlers
   window.openLoginModal = openLoginModal;
   window.handleUserAuthClick = handleUserAuthClick;
   window.logout = logout;
@@ -741,6 +997,19 @@ async function init() {
   window.exportPayoutsManagementCSV = exportPayoutsManagementCSV;
   window.exportVendorDirectoryCSV = exportVendorDirectoryCSV;
   window.exportAuditLogCSV = exportAuditLogCSV;
+  window.exportTeamAccessCSV = exportTeamAccessCSV;
+  window.toggleSelectVendorRow = toggleSelectVendorRow;
+  window.toggleSelectAllVendors = toggleSelectAllVendors;
+  window.clearVendorSelection = clearVendorSelection;
+  window.executeBulkVendorAction = executeBulkVendorAction;
+  window.openBulkImportVendorsModal = openBulkImportVendorsModal;
+  window.handleVendorCsvFileUpload = handleVendorCsvFileUpload;
+  window.downloadVendorImportTemplate = downloadVendorImportTemplate;
+  window.submitBulkImportVendors = submitBulkImportVendors;
+  window.toggleCityDropdown = toggleCityDropdown;
+  window.switchCity = switchCity;
+  window.openAddCityModal = openAddCityModal;
+  window.submitAddCity = submitAddCity;
 }
 
 function updateUserChipUI() {
@@ -1561,7 +1830,7 @@ async function renderOverallSettlementView() {
         </p>
       </div>
       <div style="display: flex; gap: 8px;">
-        <button class="btn btn-outline btn-sm" onclick="exportVendorsCSV()">
+        <button class="btn btn-outline btn-sm" onclick="exportOverallSettlementCSV()">
           📊 Export CSV / Excel
         </button>
         <button class="btn btn-primary btn-sm" onclick="refreshDashboard()">
@@ -2360,22 +2629,28 @@ function renderVendorDetailView() {
 // Sub Tab 1: Orders & Bills Ledger
 // -------------------------------------------------------------
 function renderBillsLedgerTab(bills, vendorId) {
-  return `
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title-group">
-          <h3 class="panel-title">Bills Ledger (1 Row = 1 Bill Copy Number)</h3>
-          <span style="font-size: 0.78rem; color: var(--text-muted);">
-            Edits update the accounting ledger; voided rows remain in history.
-          </span>
-        </div>
-      </div>
+  // Requirement: Segregate pushed and unpushed orders into separate sections
+  const pushedBills = bills.filter(b => b.shopifyOrderId || b.source === 'Shopify');
+  const pendingBills = bills.filter(b => !b.shopifyOrderId && b.source !== 'Shopify');
 
-      <div class="table-responsive">
-        <table class="data-table">
+  const pushedTotal = pushedBills.reduce((s, b) => s + (b.isVoid ? 0 : Number(b.billAmount || 0)), 0);
+  const pendingTotal = pendingBills.reduce((s, b) => s + (b.isVoid ? 0 : Number(b.billAmount || 0)), 0);
+
+  const renderBillsTable = (list, isPushedSection) => {
+    if (list.length === 0) {
+      return `
+        <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.85rem; background: #fafafa; border-radius: 6px; border: 1px dashed var(--notion-hairline);">
+          ${isPushedSection ? 'No approved bills pushed to Shopify yet.' : 'No pending staged bills. All bills are pushed or cleared!'}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="table-responsive" style="margin-bottom: 24px;">
+        <table class="data-table" style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr>
-              <th style="min-width: 140px;">Bill-Book No.</th>
+              <th style="min-width: 130px;">Bill-Book No.</th>
               <th style="min-width: 110px; text-align: right;">Amount (₹)</th>
               <th>Payment Mode / Ref</th>
               <th>Shopify Order Ref</th>
@@ -2384,13 +2659,11 @@ function renderBillsLedgerTab(bills, vendorId) {
               <th>Date & Time (IST)</th>
               <th>Source</th>
               <th>Last Edited By</th>
-              <th>Actions</th>
+              <th style="text-align: right;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${bills.length === 0 ? `
-              <tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 30px;">No bill rows recorded for this vendor.</td></tr>
-            ` : bills.map(b => `
+            ${list.map(b => `
               <tr class="${b.isVoid ? 'row-voided' : ''}">
                 <td>
                   <strong style="color: #4338CA; font-family: var(--font-mono); font-size: 0.88rem;">${escapeHtml(b.billCopyNo)}</strong>
@@ -2400,8 +2673,8 @@ function renderBillsLedgerTab(bills, vendorId) {
                   ${formatINR(b.billAmount)}
                 </td>
                 <td>
-                  <span class="badge ${b.paymentMode.toLowerCase().includes('cash') ? 'badge-status-open' : 'badge-status-settled'}">
-                    ${escapeHtml(b.paymentMode)}
+                  <span class="badge ${b.paymentMode && b.paymentMode.toLowerCase().includes('cash') ? 'badge-status-open' : 'badge-status-settled'}">
+                    ${escapeHtml(b.paymentMode || 'Prepaid')}
                   </span>
                   <div style="font-family: var(--font-mono); font-size: 0.72rem; color: #64748B; margin-top: 2px;">
                     ${escapeHtml(b.paymentOrderRef || '-')}
@@ -2409,26 +2682,29 @@ function renderBillsLedgerTab(bills, vendorId) {
                 </td>
                 <td>
                   ${b.shopifyOrderId ? `
-                    <span style="font-family: var(--font-mono); color: #0284C7; font-weight: 600;">#${escapeHtml(b.shopifyOrderId)}</span>
-                  ` : `<span style="color: var(--text-muted); font-size: 0.8rem;">Pending Push</span>`}
+                    <span style="font-family: var(--font-mono); color: #0284C7; font-weight: 600;">#${escapeHtml(String(b.shopifyOrderId))}</span>
+                  ` : `<span class="badge" style="background: #fff3cd; color: #856404; font-size: 0.72rem;">Pending Push</span>`}
                 </td>
                 <td class="no-strike">
                   <span class="badge ${
                     b.status === 'Paid' ? 'badge-status-paid' :
-                    b.status.includes('Returned') ? 'badge-status-partly' : 'badge-status-voided'
+                    (b.status && b.status.includes('Returned')) ? 'badge-status-partly' : 'badge-status-voided'
                   }">
-                    ${b.status}
+                    ${b.status || 'Active'}
                   </span>
                   ${b.voidReason ? `<div style="font-size: 0.7rem; color: #F87171;">Reason: ${escapeHtml(b.voidReason)}</div>` : ''}
                 </td>
                 <td>
-                  <div>${b.customerName}</div>
+                  <div>${escapeHtml(b.customerName || 'Walk-in')}</div>
                   <div style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);">
-                    📱 ${b.mobile}
-                    ${(getUserRole() === 'super_admin' && b.rawMobile && b.mobile.includes('XXXXXX')) ? `
+                    📱 ${escapeHtml(b.mobile || '-')}
+                    ${(getUserRole() === 'super_admin' && b.rawMobile && b.mobile && b.mobile.includes('XXXXXX')) ? `
                       <button class="btn btn-outline btn-sm" style="padding: 1px 4px; font-size: 0.65rem;" onclick="unmaskPhone('${b.id}')">Unmask</button>
                     ` : ''}
                   </div>
+                </td>
+                <td style="font-size: 0.78rem;">
+                  🕒 ${formatDate(b.createdAt || b.date)}
                 </td>
                 <td class="no-strike">
                   <span class="badge ${
@@ -2436,24 +2712,15 @@ function renderBillsLedgerTab(bills, vendorId) {
                     b.source === 'Auto' ? 'badge-source-auto' :
                     b.source === 'Manual' ? 'badge-source-manual' : 'badge-source-edited'
                   }">
-                    ${b.source}
+                    ${b.source || 'POS'}
                   </span>
-                </td>
-                <td class="no-strike">
-                  <span class="badge ${
-                    b.status === 'Paid' ? 'badge-status-paid' :
-                    b.status.includes('Returned') ? 'badge-status-partly' : 'badge-status-voided'
-                  }">
-                    ${b.status}
-                  </span>
-                  ${b.voidReason ? `<div style="font-size: 0.7rem; color: #F87171;">Reason: ${b.voidReason}</div>` : ''}
                 </td>
                 <td style="font-size: 0.75rem; color: var(--text-muted);">
                   ${b.lastEditedBy ? `${b.lastEditedBy}<br><span style="font-size: 0.68rem;">${formatDate(b.lastEditedAt)}</span>` : '-'}
                 </td>
-                <td class="no-strike">
+                <td class="no-strike" style="text-align: right;">
                   ${!b.isVoid && (getUserRole() === 'super_admin' || getUserRole() === 'billing_staff') ? `
-                    <div style="display: flex; gap: 6px;">
+                    <div style="display: inline-flex; gap: 6px;">
                       <button class="btn btn-outline btn-sm" onclick='openEditBillModal(${JSON.stringify(b)})'>
                         ✏️ Edit
                       </button>
@@ -2470,6 +2737,54 @@ function renderBillsLedgerTab(bills, vendorId) {
             `).join('')}
           </tbody>
         </table>
+      </div>
+    `;
+  };
+
+  return `
+    <div class="panel">
+      <!-- Section 1: Approved & Pushed to Shopify -->
+      <div style="margin-bottom: 24px;">
+        <div class="panel-header" style="background: #e8f5e9; border: 1px solid #c8e6c9; border-radius: 8px 8px 0 0; padding: 12px 18px; margin-bottom: 0;">
+          <div class="panel-title-group" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div>
+              <h3 class="panel-title" style="color: #2e7d32; display: flex; align-items: center; gap: 8px; margin: 0;">
+                <span>✅</span> Approved & Pushed to Shopify
+                <span class="badge" style="background: #2e7d32; color: #fff; font-size: 0.75rem;">${pushedBills.length} Bills</span>
+              </h3>
+              <span style="font-size: 0.78rem; color: #388e3c;">
+                Live in Shopify admin and synchronized with Overall Settlement.
+              </span>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 0.75rem; color: #388e3c; text-transform: uppercase; font-weight: 600;">Pushed Total:</span>
+              <div style="font-size: 1.15rem; font-weight: 700; color: #1b5e20;">₹${pushedTotal.toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+        </div>
+        ${renderBillsTable(pushedBills, true)}
+      </div>
+
+      <!-- Section 2: Pending / Staged Bills -->
+      <div>
+        <div class="panel-header" style="background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px 8px 0 0; padding: 12px 18px; margin-bottom: 0;">
+          <div class="panel-title-group" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div>
+              <h3 class="panel-title" style="color: #b78103; display: flex; align-items: center; gap: 8px; margin: 0;">
+                <span>⏳</span> Pending / Staged Bills (Pre-Shopify)
+                <span class="badge" style="background: #f57f17; color: #fff; font-size: 0.75rem;">${pendingBills.length} Bills</span>
+              </h3>
+              <span style="font-size: 0.78rem; color: #8d6e63;">
+                Awaiting Super Admin review &amp; approval in Orders Management before pushing to Shopify.
+              </span>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 0.75rem; color: #8d6e63; text-transform: uppercase; font-weight: 600;">Pending Total:</span>
+              <div style="font-size: 1.15rem; font-weight: 700; color: #e65100;">₹${pendingTotal.toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+        </div>
+        ${renderBillsTable(pendingBills, false)}
       </div>
     </div>
   `;
@@ -3217,11 +3532,12 @@ function openRecordPayoutModal(vendorId) {
           </div>
 
           <div class="form-group">
-            <label class="form-label required">Payment Mode</label>
+            <label class="form-label required">Payment Method</label>
             <select id="payMode" class="form-select" required>
-              <option value="UPI">UPI Transfer</option>
-              <option value="Bank Transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
-              <option value="Cash">Cash Handover at Desk</option>
+              <option value="IMPS">IMPS</option>
+              <option value="Bank NEFT/RTGS">Bank NEFT/RTGS</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="Cash Payout">Cash Payout</option>
             </select>
           </div>
 
@@ -3491,8 +3807,9 @@ function openPrintableStatement(vendorId) {
       </style>
     </head>
     <body>
-      <div style="text-align: right; margin-bottom: 12px;">
+      <div style="text-align: right; margin-bottom: 12px; display: flex; justify-content: flex-end; gap: 8px;">
         <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+        <button class="print-btn" style="background: #10B981;" onclick="if (window.opener && window.opener.exportVendorBillsCSV) { window.opener.exportVendorBillsCSV('${v.id}'); } else { window.print(); }">📥 Export Excel / CSV</button>
       </div>
       <div class="header">
         <div>
@@ -3535,22 +3852,30 @@ function openPrintableStatement(vendorId) {
             <th>Date & Time</th>
             <th>Payment Mode</th>
             <th>Customer</th>
-            <th>Bill Amount</th>
+            <th style="text-align: right;">Gross Amount</th>
+            <th style="text-align: right;">Commission (${v.commissionPct}%)</th>
+            <th style="text-align: right;">Net Settlement</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
-          ${d.bills.map(b => `
+          ${d.bills.map(b => {
+            const bAmt = Number(b.billAmount || 0);
+            const bComm = Math.round(bAmt * (v.commissionPct / 100) * 100) / 100;
+            const bSett = Math.round((bAmt - bComm) * 100) / 100;
+            return `
             <tr style="${b.isVoid ? 'text-decoration: line-through; color: #888;' : ''}">
-              <td><strong>${b.billCopyNo}</strong></td>
-              <td>${b.paymentOrderRef}</td>
+              <td><strong>${escapeHtml(b.billCopyNo)}</strong></td>
+              <td>${escapeHtml(b.paymentOrderRef || '-')}</td>
               <td>${formatDate(b.createdAt)}</td>
-              <td>${b.paymentMode}</td>
-              <td>${b.customerName}</td>
-              <td>₹${b.billAmount.toLocaleString('en-IN')}</td>
-              <td>${b.status}</td>
+              <td>${escapeHtml(b.paymentMode)}</td>
+              <td>${escapeHtml(b.customerName)}</td>
+              <td style="text-align: right;">₹${bAmt.toLocaleString('en-IN')}</td>
+              <td style="text-align: right; color: #4F46E5;">₹${bComm.toLocaleString('en-IN')}</td>
+              <td style="text-align: right; font-weight: 700; color: #059669;">₹${bSett.toLocaleString('en-IN')}</td>
+              <td>${escapeHtml(b.status)}</td>
             </tr>
-          `).join('')}
+          `;}).join('')}
         </tbody>
       </table>
 
@@ -3809,7 +4134,7 @@ async function loadAndRenderOrdersTable() {
                 <th style="padding: 10px 14px; width: 36px;">
                   <input type="checkbox" onchange="toggleSelectAllOrders(this.checked)" title="Select all unpushed">
                 </th>
-                <th style="padding: 10px 14px;">Bill # / Date</th>
+                <th style="padding: 10px 14px;">HalfPe Bill Copy Number</th>
                 <th style="padding: 10px 14px;">Customer</th>
                 <th style="padding: 10px 14px;">Stall & Vendor</th>
                 <th style="padding: 10px 14px;">Items</th>
@@ -3831,6 +4156,10 @@ async function loadAndRenderOrdersTable() {
                 const net = o.totalPayable || gross;
                 const itemsCount = (o.items && o.items.length) || 1;
                 const firstItemTitle = o.items?.[0]?.name || o.items?.[0]?.title || 'Expo Item';
+                
+                // Requirement: Only pure bill number without any prefix (e.g. 8569 or 6418)
+                const rawBill = String(o.billNo || o.id);
+                const cleanBillNo = rawBill.replace(/^(HPD-[A-Z0-9]+-\d+-|HP-VIJ-|HPD-VIJ-|HPD-|VIJ-|ord_\d+_[a-z0-9]+_|ord_\d+_)/i, '');
 
                 return `
                   <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); transition: background 0.15s; ${isRejected ? 'opacity: 0.6; background: #fafafa;' : ''}" onmouseover="this.style.background='#faf9f8'" onmouseout="this.style.background='${isRejected ? '#fafafa' : 'transparent'}'">
@@ -3840,8 +4169,8 @@ async function loadAndRenderOrdersTable() {
                         onchange="toggleSelectOrder('${o.id}', this.checked)">
                     </td>
                     <td style="padding: 12px 14px;">
-                      <strong style="color: var(--notion-ink); font-family: var(--font-mono);">${escapeHtml(o.billNo || o.id)}</strong>
-                      <div style="font-size: 0.72rem; color: var(--notion-muted);">${formatDate(o.createdAt)}</div>
+                      <strong style="color: var(--notion-ink); font-family: var(--font-mono); font-size: 0.95rem;">${escapeHtml(cleanBillNo)}</strong>
+                      <div style="font-size: 0.72rem; color: var(--notion-muted); margin-top: 2px;">🕒 ${formatDate(o.createdAt || o.date)}</div>
                     </td>
                     <td style="padding: 12px 14px;">
                       <div style="font-weight: 600; color: var(--notion-ink);">${escapeHtml(o.customer?.name || 'Walk-in')}</div>
@@ -4308,13 +4637,11 @@ async function submitEditOrder(e, orderId) {
     });
     const data = await res.json();
     if (data.success) {
-      toast('✓ Order updated successfully', 'success');
+      toast('✓ Order updated successfully! Redirected to Orders view.', 'success');
       closeModal();
-      if (state.activeTab !== 'orders') {
-        switchMainTab('orders');
-      } else {
-        await loadAndRenderOrdersTable();
-      }
+      switchMainTab('orders');
+      await renderOrdersManagementView();
+      await loadVendorsSummary();
     } else {
       toast(`Update failed: ${data.error}`, 'error');
     }
@@ -4328,31 +4655,57 @@ async function submitEditOrder(e, orderId) {
 // KRISHNA PILLAR 4: SUPER ADMIN VENDOR MANAGEMENT (CRUD)
 // =============================================================
 
+const vendorMgmtSelectedIds = new Set();
+
 async function renderVendorManagementView() {
   const main = document.getElementById('mainContent');
   if (!main) return;
 
   main.innerHTML = `
-    <div class="view-header" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+    <div class="view-header" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
       <div>
         <h1 class="view-title" style="font-size: 1.6rem; font-weight: 700; color: var(--notion-ink); display: flex; align-items: center; gap: 10px;">
           🏬 Vendor Management
           <span class="badge badge-purple" style="font-size: 0.75rem; vertical-align: middle;">Directory Master</span>
         </h1>
         <p class="view-subtitle" style="color: var(--notion-secondary); font-size: 0.88rem; margin-top: 4px;">
-          Add official vendors, assign or change stall numbers, and manage vendor active status without deleting historical records.
+          Add official vendors, assign stall numbers, bulk activate/deactivate, and bulk import vendors from Excel / CSV.
         </p>
       </div>
 
-      <div style="display: flex; gap: 10px; align-items: center;">
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
         <button class="btn btn-outline btn-sm" onclick="exportVendorDirectoryCSV()">
           📥 Export Directory CSV
         </button>
         ${getUserRole() === 'super_admin' ? `
+          <button class="btn btn-outline btn-sm" onclick="openBulkImportVendorsModal()" style="border-color: #10B981; color: #047857;">
+            📊 Bulk Import (Excel / CSV)
+          </button>
           <button class="btn btn-primary btn-sm" onclick="openAddVendorModal()">
-            ➕ Add New Vendor
+            ➕ Add Single Vendor
           </button>
         ` : ''}
+      </div>
+    </div>
+
+    <!-- Bulk Action Toolbar (Appears when 1 or more vendors selected) -->
+    <div id="vendorBulkActionBar" style="display: none; padding: 12px 18px; margin-bottom: 16px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: var(--radius-md); box-shadow: var(--shadow-soft); justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 0.88rem; font-weight: 700; color: #3730a3;" id="vendorBulkSelectedCount">0 Vendors Selected</span>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <button class="btn btn-outline btn-xs" style="background:#fff; color:#15803d; border-color:#86efac;" onclick="executeBulkVendorAction('activate')">
+          ✅ Bulk Activate
+        </button>
+        <button class="btn btn-outline btn-xs" style="background:#fff; color:#b91c1c; border-color:#fca5a5;" onclick="executeBulkVendorAction('deactivate')">
+          🚫 Bulk Deactivate
+        </button>
+        <button class="btn btn-outline btn-xs" style="background:#fff; color:#4338ca; border-color:#a5b4fc;" onclick="executeBulkVendorAction('update_commission')">
+          📊 Update Commission %
+        </button>
+        <button class="btn btn-outline btn-xs" style="background:#fff;" onclick="clearVendorSelection()">
+          ✕ Clear
+        </button>
       </div>
     </div>
 
@@ -4382,12 +4735,15 @@ async function loadAndRenderVendorMgmtTable() {
       <div class="table-card" style="background: #fff; border-radius: var(--radius-md); border: 1px solid var(--notion-hairline); overflow: hidden; box-shadow: var(--shadow-soft);">
         <div style="padding: 12px 18px; background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; color: var(--notion-secondary);">
           <span>Total Registered Vendors: <strong>${sorted.length}</strong></span>
-          <span style="font-size: 0.8rem; color: #28a745;">🛡️ Historical records safeguarded (Soft deactivation only)</span>
+          <span style="font-size: 0.8rem; color: #28a745;">🛡️ Bulk actions & Excel sheet imports enabled</span>
         </div>
         <div style="overflow-x: auto;">
           <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
             <thead>
               <tr style="background: var(--notion-surface-warm); border-bottom: 1px solid var(--notion-hairline); text-align: left;">
+                <th style="padding: 10px 14px; width: 36px;">
+                  <input type="checkbox" id="selectAllVendors" onchange="toggleSelectAllVendors(this.checked)" title="Select all vendors">
+                </th>
                 <th style="padding: 10px 14px;">Stall #</th>
                 <th style="padding: 10px 14px;">Vendor Name</th>
                 <th style="padding: 10px 14px;">Code / Stable ID</th>
@@ -4401,8 +4757,12 @@ async function loadAndRenderVendorMgmtTable() {
               ${sorted.map(vObj => {
                 const v = vObj.vendor || vObj;
                 const isActive = v.active !== false;
+                const isChecked = vendorMgmtSelectedIds.has(v.id);
                 return `
-                  <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); opacity: ${isActive ? '1' : '0.6'};">
+                  <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); opacity: ${isActive ? '1' : '0.6'}; background: ${isChecked ? '#f5f3ff' : 'transparent'};">
+                    <td style="padding: 12px 14px;">
+                      <input type="checkbox" value="${v.id}" class="vendor-row-check" ${isChecked ? 'checked' : ''} onchange="toggleSelectVendorRow('${v.id}', this.checked)">
+                    </td>
                     <td style="padding: 12px 14px;">
                       <span class="badge" style="background: #eef2f6; font-size: 0.78rem; font-weight: 600;">${escapeHtml(v.stallNo || 'Stall TBD')}</span>
                     </td>
@@ -4446,8 +4806,242 @@ async function loadAndRenderVendorMgmtTable() {
         </div>
       </div>
     `;
+
+    updateVendorBulkActionBar();
   } catch (err) {
     container.innerHTML = `<div class="card" style="padding: 24px; color: red;">Error: ${err.message}</div>`;
+  }
+}
+
+function toggleSelectVendorRow(id, checked) {
+  if (checked) vendorMgmtSelectedIds.add(id);
+  else vendorMgmtSelectedIds.delete(id);
+  updateVendorBulkActionBar();
+}
+
+function toggleSelectAllVendors(checked) {
+  const checkboxes = document.querySelectorAll('#vendorMgmtTableContainer input.vendor-row-check');
+  checkboxes.forEach(cb => {
+    cb.checked = checked;
+    if (checked) vendorMgmtSelectedIds.add(cb.value);
+    else vendorMgmtSelectedIds.delete(cb.value);
+  });
+  updateVendorBulkActionBar();
+}
+
+function clearVendorSelection() {
+  vendorMgmtSelectedIds.clear();
+  const selectAll = document.getElementById('selectAllVendors');
+  if (selectAll) selectAll.checked = false;
+  document.querySelectorAll('#vendorMgmtTableContainer input.vendor-row-check').forEach(cb => cb.checked = false);
+  updateVendorBulkActionBar();
+}
+
+function updateVendorBulkActionBar() {
+  const bar = document.getElementById('vendorBulkActionBar');
+  const countEl = document.getElementById('vendorBulkSelectedCount');
+  if (!bar) return;
+  const count = vendorMgmtSelectedIds.size;
+  if (count > 0) {
+    bar.style.display = 'flex';
+    if (countEl) countEl.textContent = `${count} Vendor${count > 1 ? 's' : ''} Selected`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+async function executeBulkVendorAction(action) {
+  const ids = Array.from(vendorMgmtSelectedIds);
+  if (ids.length === 0) {
+    toast('No vendors selected.', 'error');
+    return;
+  }
+
+  let commissionPct = undefined;
+  if (action === 'update_commission') {
+    const input = prompt(`Enter new Commission % to apply to all ${ids.length} selected vendors:`, '15');
+    if (input === null) return;
+    commissionPct = parseFloat(input);
+    if (isNaN(commissionPct) || commissionPct < 0 || commissionPct > 100) {
+      toast('Invalid commission rate entered.', 'error');
+      return;
+    }
+  } else {
+    const actionWord = action === 'activate' ? 'activate' : 'deactivate';
+    if (!confirm(`Are you sure you want to ${actionWord} ${ids.length} selected vendors?`)) {
+      return;
+    }
+  }
+
+  toast(`Applying bulk ${action} across ${ids.length} vendors...`, 'info');
+
+  try {
+    const res = await fetch('/api/vendors/bulk-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, vendorIds: ids, commissionPct })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Successfully updated ${data.updatedCount} vendors!`, 'success');
+      clearVendorSelection();
+      await loadAndRenderVendorMgmtTable();
+      await loadVendorsSummary();
+    } else {
+      toast(`Bulk action failed: ${data.error}`, 'error');
+    }
+  } catch (err) {
+    toast('Network error during bulk action: ' + err.message, 'error');
+  }
+}
+
+// Bulk Import Vendors Modal (F2)
+function openBulkImportVendorsModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="login-modal-box" style="max-width: 620px;">
+      <div class="login-modal-header">
+        <div>
+          <h3 class="login-modal-title">📊 Bulk Import Vendors (Excel / CSV)</h3>
+          <p class="login-modal-sub">Add or update multiple vendors at once from spreadsheet data</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <div style="padding: 24px;">
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 12px 16px; border-radius: var(--radius-sm); font-size: 0.83rem; color: #166534; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <strong>Expected Columns:</strong><br>
+            <code>StallNo, VendorName, Code, Category, CommissionPct, Phone</code>
+          </div>
+          <button type="button" class="btn btn-outline btn-xs" style="background:#fff;" onclick="downloadVendorImportTemplate()">
+            📥 Download Template
+          </button>
+        </div>
+
+        <form id="bulkVendorForm" onsubmit="submitBulkImportVendors(event)">
+          <div style="margin-bottom: 14px;">
+            <label style="font-weight: 600; font-size: 0.84rem; display: block; margin-bottom: 6px;">
+              Paste CSV or Tab-Separated Data from Excel:
+            </label>
+            <textarea id="bulkVendorData" class="form-input" rows="8" placeholder="StallNo, VendorName, Code, Category, CommissionPct, Phone&#10;Stall 01, Artisan Silks, ART01, Apparel, 15, 9876543210&#10;Stall 02, Spice Hub, SPH02, Food, 15, 9123456789" style="width: 100%; font-family: var(--font-mono); font-size: 0.82rem; padding: 10px;" required></textarea>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label class="btn btn-outline btn-xs" style="cursor: pointer;">
+              📁 Upload .csv File
+              <input type="file" accept=".csv,.txt" style="display:none;" onchange="handleVendorCsvFileUpload(event)">
+            </label>
+
+            <div style="display: flex; gap: 10px;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+              <button type="submit" class="btn btn-primary btn-sm" id="btnSubmitBulkImport" style="background: #10B981; border-color: #10B981;">
+                🚀 Start Import
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+  container.classList.remove('hidden');
+}
+
+function handleVendorCsvFileUpload(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    const ta = document.getElementById('bulkVendorData');
+    if (ta) ta.value = evt.target.result;
+    toast(`✓ Loaded file: ${file.name}`, 'info');
+  };
+  reader.readAsText(file);
+}
+
+function downloadVendorImportTemplate() {
+  const headers = ['StallNo', 'VendorName', 'Code', 'Category', 'CommissionPct', 'Phone'];
+  const sampleRows = [
+    ['Stall 101', 'Heritage Sarees', 'HER101', 'Apparel', '15', '9876543210'],
+    ['Stall 102', 'Krishna Crafts', 'KRI102', 'Handicrafts', '15', '9876543211'],
+    ['Stall 103', 'Amaravati Spices', 'AMA103', 'FMCG', '15', '9876543212']
+  ];
+  downloadDataAsCSV('HalfPe_Vendor_Import_Template', headers, sampleRows);
+}
+
+async function submitBulkImportVendors(e) {
+  e.preventDefault();
+  const text = (document.getElementById('bulkVendorData').value || '').trim();
+  if (!text) {
+    toast('Please paste data or upload a CSV file.', 'error');
+    return;
+  }
+
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    toast('No data lines found.', 'error');
+    return;
+  }
+
+  // Parse lines (support comma or tab)
+  const isHeader = lines[0].toLowerCase().includes('stall') || lines[0].toLowerCase().includes('vendor');
+  const dataLines = isHeader ? lines.slice(1) : lines;
+
+  const vendorsToImport = [];
+  dataLines.forEach(line => {
+    // split by comma or tab (handles basic CSV)
+    const cols = line.includes('\t') ? line.split('\t') : line.split(',');
+    const clean = cols.map(c => c.trim().replace(/^["']|["']$/g, ''));
+    if (clean.length >= 2) {
+      vendorsToImport.push({
+        stallNo: clean[0] || 'Stall TBD',
+        name: clean[1] || 'Partner Vendor',
+        code: clean[2] || '',
+        category: clean[3] || 'Retail',
+        commissionPct: clean[4] ? parseFloat(clean[4]) : 15,
+        phone: clean[5] || ''
+      });
+    }
+  });
+
+  if (vendorsToImport.length === 0) {
+    toast('No valid vendor rows detected. Check columns format.', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btnSubmitBulkImport');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Importing...';
+  }
+
+  try {
+    const res = await fetch('/api/vendors/bulk-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vendors: vendorsToImport })
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✓ Successfully imported ${data.count} vendors into the directory!`, 'success');
+      closeModal();
+      await loadAndRenderVendorMgmtTable();
+      await loadVendorsSummary();
+    } else {
+      toast(`Import failed: ${data.error}`, 'error');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '🚀 Start Import';
+      }
+    }
+  } catch (err) {
+    toast('Import network error: ' + err.message, 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🚀 Start Import';
+    }
   }
 }
 
@@ -5397,7 +5991,10 @@ function renderTeamAccessView() {
             Create user credentials, generate passwords, assign designations & control granular permission scopes. Newly provisioned credentials activate immediately with 0 delay.
           </p>
         </div>
-        <div style="display: flex; gap: 12px; align-items: center;">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+          <button class="btn btn-outline" onclick="exportTeamAccessCSV()" style="padding: 10px 14px; font-size: 0.88rem;">
+            📥 Export Team CSV
+          </button>
           <button class="btn btn-primary" onclick="openCreateUserModal()" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; font-weight: 600; box-shadow: var(--shadow-soft);">
             <span style="font-size: 1.1rem;">➕</span> <span>Create User & Share Access</span>
           </button>
