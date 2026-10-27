@@ -353,6 +353,50 @@ app.post('/api/auth/switch', (req, res) => {
   });
 });
 
+// -------------------------------------------------------------
+// Real-Time Live Sync Engine (SSE - Server-Sent Events)
+// -------------------------------------------------------------
+const sseClients = new Set();
+
+app.get('/api/events/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const clientId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const client = { id: clientId, res, user: req.user };
+  sseClients.add(client);
+
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, timestamp: new Date().toISOString() })}\n\n`);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`:heartbeat ${Date.now()}\n\n`);
+    } catch (e) {
+      clearInterval(heartbeat);
+      sseClients.delete(client);
+    }
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    sseClients.delete(client);
+  });
+});
+
+function broadcastEvent(type, payload = {}) {
+  const msg = JSON.stringify({ type, payload, timestamp: new Date().toISOString() });
+  for (const client of sseClients) {
+    try {
+      client.res.write(`data: ${msg}\n\n`);
+    } catch (e) {
+      sseClients.delete(client);
+    }
+  }
+}
+
 // Middleware to check day lock for mutation
 function checkDayLock(req, res, next) {
   const { date } = req.body;
@@ -537,7 +581,16 @@ app.patch('/api/vendors/:id/commission', (req, res) => {
 // Record Internal Order from POS / Payment Page (DOES NOT create Shopify order automatically)
 app.post('/api/orders/record', (req, res) => {
   try {
-    const result = store.recordInternalOrder(req.body, currentUser);
+    const activeUser = getRequestUser(req);
+    const result = store.recordInternalOrder(req.body, activeUser);
+    if (!result.isDuplicate) {
+      broadcastEvent('ORDER_RECORDED', { 
+        orderId: result.order.id, 
+        billNo: result.order.billNo,
+        vendorId: result.order.vendorId,
+        grossAmount: result.order.totals?.grossAmount || 0
+      });
+    }
     res.status(result.isDuplicate ? 200 : 201).json({
       success: true,
       isDuplicate: result.isDuplicate,
@@ -598,12 +651,14 @@ app.get('/api/orders/:id', (req, res) => {
 
 // Edit internal order before Shopify push (Super Admin only)
 app.put('/api/orders/:id', (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const activeUser = getRequestUser(req);
+  if (activeUser.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can edit internal order details.' });
   }
   try {
-    const updated = store.updateInternalOrder(req.params.id, req.body, currentUser);
+    const updated = store.updateInternalOrder(req.params.id, req.body, activeUser);
     if (!updated) return res.status(404).json({ error: 'Order not found' });
+    broadcastEvent('ORDER_UPDATED', { order: updated });
     res.json({ success: true, order: updated });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -612,7 +667,8 @@ app.put('/api/orders/:id', (req, res) => {
 
 // Push approved internal order to Shopify (Super Admin only - Backend Enforced)
 app.post('/api/orders/:id/push-to-shopify', async (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const activeUser = getRequestUser(req);
+  if (activeUser.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can push orders to Shopify.' });
   }
 
@@ -627,14 +683,20 @@ app.post('/api/orders/:id/push-to-shopify', async (req, res) => {
   }
 
   try {
-    console.log(`[PushToShopify] Super Admin "${currentUser.name}" initiated push for Bill #${order.billNo}...`);
+    console.log(`[PushToShopify] Super Admin "${activeUser.name}" initiated push for Bill #${order.billNo}...`);
     const shopifyResult = await shopifyClient.createShopifyOrder(order);
 
     const updatedOrder = store.markOrderPushed(order.id, {
       shopifyOrderId: shopifyResult.shopifyOrderId,
       shopifyOrderNumber: shopifyResult.shopifyOrderNumber,
-      pushedBy: currentUser,
+      pushedBy: activeUser,
       syncResult: shopifyResult
+    });
+
+    broadcastEvent('ORDER_PUSHED', {
+      orderId: order.id,
+      shopifyOrderId: shopifyResult.shopifyOrderId,
+      shopifyOrderNumber: shopifyResult.shopifyOrderNumber
     });
 
     res.json({
@@ -646,7 +708,7 @@ app.post('/api/orders/:id/push-to-shopify', async (req, res) => {
     });
   } catch (err) {
     console.error(`[PushToShopify] Failed to push Bill #${order.billNo}:`, err.message);
-    store.markOrderPushFailed(order.id, { error: err.message, pushedBy: currentUser });
+    store.markOrderPushFailed(order.id, { error: err.message, pushedBy: activeUser });
     res.status(500).json({
       success: false,
       error: `Failed to create order in Shopify: ${err.message}`,
@@ -657,7 +719,8 @@ app.post('/api/orders/:id/push-to-shopify', async (req, res) => {
 
 // Bulk push approved orders to Shopify (Super Admin only)
 app.post('/api/orders/bulk-push-to-shopify', async (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const activeUser = getRequestUser(req);
+  if (activeUser.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can execute bulk push to Shopify.' });
   }
 
@@ -679,15 +742,20 @@ app.post('/api/orders/bulk-push-to-shopify', async (req, res) => {
       store.markOrderPushed(order.id, {
         shopifyOrderId: shopifyResult.shopifyOrderId,
         shopifyOrderNumber: shopifyResult.shopifyOrderNumber,
-        pushedBy: currentUser,
+        pushedBy: activeUser,
         syncResult: shopifyResult
       });
       results.push({ id, billNo: order.billNo, success: true, shopifyOrderNumber: shopifyResult.shopifyOrderNumber });
     } catch (err) {
-      store.markOrderPushFailed(order.id, { error: err.message, pushedBy: currentUser });
+      store.markOrderPushFailed(order.id, { error: err.message, pushedBy: activeUser });
       results.push({ id, billNo: order.billNo, success: false, error: err.message });
     }
   }
+
+  broadcastEvent('ORDERS_BULK_PUSHED', {
+    processedCount: results.length,
+    results
+  });
 
   res.json({
     success: true,
@@ -698,13 +766,15 @@ app.post('/api/orders/bulk-push-to-shopify', async (req, res) => {
 
 // Reject an unapproved internal order (Super Admin only)
 app.post('/api/orders/:id/reject', (req, res) => {
-  if (currentUser.role !== 'super_admin') {
+  const activeUser = getRequestUser(req);
+  if (activeUser.role !== 'super_admin') {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can reject orders.' });
   }
   const { reason } = req.body || {};
   try {
-    const order = store.rejectInternalOrder(req.params.id, reason || 'Rejected by Super Admin', currentUser);
+    const order = store.rejectInternalOrder(req.params.id, reason || 'Rejected by Super Admin', activeUser);
     if (!order) return res.status(404).json({ error: 'Order not found' });
+    broadcastEvent('ORDER_REJECTED', { orderId: req.params.id, reason });
     res.json({ success: true, message: 'Order rejected successfully', order });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -748,6 +818,13 @@ app.post('/api/orders/simulate', (req, res) => {
     terminal: 'POS-01',
     source: 'POS Billing Terminal'
   }, currentUser.name || 'Super Admin Simulation');
+
+  broadcastEvent('ORDER_RECORDED', { 
+    orderId: result.order.id, 
+    billNo: result.order.billNo,
+    vendorId: result.order.vendorId,
+    grossAmount: result.order.totals?.grossAmount || 0
+  });
 
   res.json({ success: true, order: result.order });
 });
@@ -1030,7 +1107,8 @@ app.get('/api/vendors/:id/unpaid-orders', (req, res) => {
 });
 
 app.post('/api/payouts', (req, res) => {
-  if (currentUser.role !== 'finance' && currentUser.role !== 'super_admin') {
+  const actor = req.user || currentUser;
+  if (actor.role !== 'finance' && actor.role !== 'super_admin') {
     return res.status(403).json({ error: 'Only Finance or Super Admin can record payouts.' });
   }
 
@@ -1049,9 +1127,10 @@ app.post('/api/payouts', (req, res) => {
         paymentMode: mode,
         referenceUtr: reference,
         notes,
-        adminUser: currentUser,
+        adminUser: actor,
         date
       });
+      broadcastEvent('PAYOUT_DISBURSED', { vendorId, amount: parseFloat(amount) });
       return res.status(201).json({ success: true, payout });
     }
 
@@ -1064,12 +1143,12 @@ app.post('/api/payouts', (req, res) => {
       reference: reference || 'UTR-' + Date.now().toString().slice(-8),
       notes: notes || '',
       date: date || new Date().toISOString(),
-      paidBy: currentUser.name
+      paidBy: actor.name
     };
 
     store.data.payouts.unshift(newPayout);
     store.logAudit(
-      currentUser.name,
+      actor.name,
       'RECORD_PAYOUT',
       'payout',
       newPayout.id,
@@ -1080,6 +1159,7 @@ app.post('/api/payouts', (req, res) => {
     );
     store.save();
 
+    broadcastEvent('PAYOUT_DISBURSED', { vendorId, amount: parseFloat(amount) });
     res.json({ success: true, payout: newPayout });
   } catch (err) {
     console.error('[Payout Error]:', err.message);
@@ -1095,6 +1175,7 @@ app.get('/api/day-locks', (req, res) => {
 });
 
 app.post('/api/day-locks/toggle', (req, res) => {
+  const actor = req.user || currentUser;
   const { date, lock, reason } = req.body;
   if (!date) return res.status(400).json({ error: 'Date is required.' });
 
@@ -1102,7 +1183,7 @@ app.post('/api/day-locks/toggle', (req, res) => {
   let lockEntry = store.data.dayLocks.find(dl => dl.date === dayStr);
 
   if (lock) {
-    if (currentUser.role !== 'finance' && currentUser.role !== 'super_admin') {
+    if (actor.role !== 'finance' && actor.role !== 'super_admin') {
       return res.status(403).json({ error: 'Only Finance or Super Admin can lock a day.' });
     }
     if (!lockEntry) {
@@ -1110,12 +1191,12 @@ app.post('/api/day-locks/toggle', (req, res) => {
       store.data.dayLocks.push(lockEntry);
     }
     lockEntry.isLocked = true;
-    lockEntry.lockedBy = currentUser.name;
+    lockEntry.lockedBy = actor.name;
     lockEntry.lockedAt = new Date().toISOString();
 
-    store.logAudit(currentUser.name, 'LOCK_DAY', 'day_lock', dayStr, 'isLocked', 'false', 'true', 'Day marked settled and locked');
+    store.logAudit(actor.name, 'LOCK_DAY', 'day_lock', dayStr, 'isLocked', 'false', 'true', 'Day marked settled and locked');
   } else {
-    if (currentUser.role !== 'super_admin') {
+    if (actor.role !== 'super_admin') {
       return res.status(403).json({ error: 'Only Super Admin can unlock a locked day.' });
     }
     if (!reason || !reason.trim()) {
@@ -1123,13 +1204,14 @@ app.post('/api/day-locks/toggle', (req, res) => {
     }
     if (lockEntry) {
       lockEntry.isLocked = false;
-      lockEntry.unlockedBy = currentUser.name;
+      lockEntry.unlockedBy = actor.name;
       lockEntry.unlockReason = reason;
     }
-    store.logAudit(currentUser.name, 'UNLOCK_DAY', 'day_lock', dayStr, 'isLocked', 'true', 'false', reason);
+    store.logAudit(actor.name, 'UNLOCK_DAY', 'day_lock', dayStr, 'isLocked', 'true', 'false', reason);
   }
 
   store.save();
+  broadcastEvent('DAY_LOCK_CHANGED', { date: dayStr, isLocked: !!lock });
   res.json({ success: true, dayLocks: store.data.dayLocks });
 });
 

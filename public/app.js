@@ -115,6 +115,84 @@ function formatDate(isoStr) {
 }
 
 // -------------------------------------------------------------
+// Real-Time Live Sync (Phase 1 / E7 via SSE)
+// -------------------------------------------------------------
+let liveSyncSource = null;
+let liveSyncDebounceTimer = null;
+
+function setupLiveSync() {
+  if (typeof EventSource === 'undefined') {
+    console.warn('[Live Sync] EventSource not supported by browser.');
+    return;
+  }
+  if (liveSyncSource) {
+    try { liveSyncSource.close(); } catch (e) {}
+  }
+
+  try {
+    liveSyncSource = new EventSource('/api/events/stream');
+
+    const updatePill = (connected) => {
+      const dot = document.getElementById('liveSyncDot');
+      const text = document.getElementById('liveSyncText');
+      if (dot) {
+        if (connected) {
+          dot.classList.remove('disconnected');
+        } else {
+          dot.classList.add('disconnected');
+        }
+      }
+      if (text) {
+        text.textContent = connected ? 'Live Sync' : 'Reconnecting...';
+      }
+    };
+
+    liveSyncSource.onopen = () => {
+      console.log('[Live Sync] SSE connection established.');
+      updatePill(true);
+    };
+
+    liveSyncSource.onerror = (err) => {
+      console.warn('[Live Sync] SSE connection interrupted, browser will auto-reconnect...', err);
+      updatePill(false);
+    };
+
+    liveSyncSource.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'CONNECTED' || data.type === 'HEARTBEAT') return;
+
+        console.log('[Live Sync] Received real-time update:', data.type, data.payload);
+
+        // Smart Debounced Refresh based on active screen
+        clearTimeout(liveSyncDebounceTimer);
+        liveSyncDebounceTimer = setTimeout(async () => {
+          if (!state.currentUser) return;
+
+          if (state.selectedVendorId) {
+            await loadVendorDetail(state.selectedVendorId);
+          } else if (state.activeTab === 'overall' || state.activeTab === 'vendors') {
+            await loadVendorsSummary();
+          } else if (state.activeTab === 'orders') {
+            if (typeof renderOrdersManagementView === 'function') {
+              renderOrdersManagementView();
+            }
+          } else if (state.activeTab === 'payout_mgmt') {
+            if (typeof renderPayoutManagementView === 'function') {
+              renderPayoutManagementView();
+            }
+          }
+        }, 350);
+      } catch (parseErr) {
+        console.error('[Live Sync] Error parsing SSE payload:', parseErr);
+      }
+    };
+  } catch (err) {
+    console.warn('[Live Sync] Setup failed:', err);
+  }
+}
+
+// -------------------------------------------------------------
 // Initialization
 // -------------------------------------------------------------
 async function init() {
@@ -128,14 +206,17 @@ async function init() {
     console.warn('Could not read saved session:', e);
   }
 
-  // 2. Fetch system users & active role
+  // 2. Setup real-time live sync
+  setupLiveSync();
+
+  // 3. Fetch system users & active role
   await fetchUsers();
   updateUserChipUI();
 
-  // 3. Check Shopify connection status
+  // 4. Check Shopify connection status
   await checkShopifyStatus();
 
-  // 4. Load initial vendors data only if authenticated, otherwise render login page immediately
+  // 5. Load initial vendors data only if authenticated, otherwise render login page immediately
   if (state.currentUser) {
     await loadVendorsSummary();
   } else {
