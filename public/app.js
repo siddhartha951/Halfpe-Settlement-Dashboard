@@ -1,3 +1,14 @@
+function normalizeCityCode(raw) {
+  if (!raw) return 'VIJ';
+  const s = String(raw).trim().toUpperCase();
+  if (s === 'VIJAYAWADA' || s === 'VIJ') return 'VIJ';
+  if (s === 'HYDERABAD' || s === 'HYD') return 'HYD';
+  if (s === 'VISAKHAPATNAM' || s === 'VIZAG' || s === 'VSP') return 'VSP';
+  if (s === 'BENGALURU' || s === 'BANGALORE' || s === 'BLR') return 'BLR';
+  return s;
+}
+window.normalizeCityCode = normalizeCityCode;
+
 function formatBillCopy(raw) {
   if (!raw) return '-';
   if (Array.isArray(raw)) return raw.map(formatBillCopy).filter(Boolean).join(', ');
@@ -35,7 +46,7 @@ window.fetch = function(url, options) {
     activeUser = { id: 'usr_1', email: 'admin@halfpe.com', role: 'super_admin' };
   }
 
-  const activeCityId = (typeof state !== 'undefined' && state.currentCityId) ? state.currentCityId : 'VIJ';
+  const activeCityId = (typeof state !== 'undefined' && state.currentCityId) ? normalizeCityCode(state.currentCityId) : 'VIJ';
   if (options.headers instanceof Headers) {
     if (!options.headers.has('x-city-id')) options.headers.set('x-city-id', activeCityId);
     if (!options.headers.has('x-user-id')) options.headers.set('x-user-id', activeUser.id);
@@ -105,12 +116,12 @@ const state = {
   isShopifySyncing: false,
   // Multi-City Architecture (A2)
   cities: [
-    { id: 'vijayawada', name: 'Vijayawada Expo', venue: 'SVN Conventions, Poranki', dates: '8–11 Oct 2026', commissionPct: 15 },
-    { id: 'hyderabad', name: 'Hyderabad Expo', venue: 'Hitex Exhibition Centre', dates: '15–18 Oct 2026', commissionPct: 15 },
-    { id: 'visakhapatnam', name: 'Visakhapatnam Expo', venue: 'AU Convention Center', dates: '22–25 Oct 2026', commissionPct: 15 },
-    { id: 'bengaluru', name: 'Bengaluru Expo', venue: 'Tripuravasini Palace Grounds', dates: '29 Oct–1 Nov 2026', commissionPct: 15 }
+    { id: 'VIJ', code: 'VIJ', name: 'Vijayawada Expo', venue: 'SVN Conventions, Poranki', dates: '8–11 Oct 2026', commissionPct: 15 },
+    { id: 'HYD', code: 'HYD', name: 'Hyderabad Expo', venue: 'Hitex Exhibition Centre', dates: '15–18 Oct 2026', commissionPct: 15 },
+    { id: 'VSP', code: 'VSP', name: 'Visakhapatnam Expo', venue: 'AU Convention Center', dates: '22–25 Oct 2026', commissionPct: 15 },
+    { id: 'BLR', code: 'BLR', name: 'Bengaluru Expo', venue: 'Tripuravasini Palace Grounds', dates: '29 Oct–1 Nov 2026', commissionPct: 15 }
   ],
-  currentCityId: 'vijayawada'
+  currentCityId: 'VIJ'
 };
 
 function getUserRole() {
@@ -143,25 +154,31 @@ function initCitySelector() {
     if (savedCities) {
       const parsed = JSON.parse(savedCities);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        state.cities = parsed;
+        state.cities = parsed.map(c => ({
+          ...c,
+          id: normalizeCityCode(c.id || c.code),
+          code: normalizeCityCode(c.code || c.id)
+        }));
       }
     }
-    const savedActive = localStorage.getItem('hp_active_city_id');
-    if (savedActive && state.cities.some(c => c.id === savedActive)) {
-      state.currentCityId = savedActive;
-    }
-  } catch (e) {}
+    const rawActive = localStorage.getItem('hp_active_city_id') || localStorage.getItem('hp_active_city');
+    state.currentCityId = normalizeCityCode(rawActive);
+    localStorage.setItem('hp_active_city_id', state.currentCityId);
+  } catch (e) {
+    state.currentCityId = 'VIJ';
+  }
 
   updateCityHeaderDisplay();
   renderCityDropdown();
 }
 
 function updateCityHeaderDisplay() {
-  const current = state.cities.find(c => c.id === state.currentCityId) || state.cities[0];
+  const normId = normalizeCityCode(state.currentCityId);
+  const current = state.cities.find(c => normalizeCityCode(c.id || c.code) === normId) || state.cities[0];
   const nameEl = document.getElementById('currentEventCityName');
   const venueEl = document.getElementById('currentEventCityVenue');
-  if (nameEl) nameEl.textContent = `Half Price Days — ${current.name}`;
-  if (venueEl) venueEl.textContent = `${current.venue} (${current.dates})`;
+  if (nameEl && current) nameEl.textContent = `Half Price Days — ${current.name}`;
+  if (venueEl && current) venueEl.textContent = `${current.venue} (${current.dates})`;
 }
 
 function toggleCityDropdown(eOrForce) {
@@ -200,15 +217,19 @@ function renderCityDropdown() {
 }
 
 function switchCity(cityId) {
-  const target = state.cities.find(c => c.id === cityId);
-  if (!target) return;
+  const normId = normalizeCityCode(cityId);
+  const target = state.cities.find(c => normalizeCityCode(c.id || c.code) === normId) || state.cities[0];
+  state.currentCityId = normId;
+  try { localStorage.setItem('hp_active_city_id', normId); } catch (e) {}
 
-  state.currentCityId = cityId;
-  try { localStorage.setItem('hp_active_city_id', cityId); } catch (e) {}
+  // Clear data cache on city switch (BUG-17)
+  state.vendorsData = null;
+  state.selectedVendorId = null;
+  state.selectedGlobalVendor = 'all';
 
   updateCityHeaderDisplay();
   toggleCityDropdown(false);
-  toast(`✓ Switched dashboard to ${target.name} (${target.venue})`, 'info');
+  toast(`✓ Switched dashboard to ${target ? target.name : normId}`, 'info');
 
   // Re-render active view for newly selected city context
   if (state.activeTab === 'overall') {
@@ -217,10 +238,16 @@ function switchCity(cityId) {
     renderVendorsListView();
   } else if (state.activeTab === 'orders') {
     renderOrdersManagementView();
+  } else if (state.activeTab === 'vendor_mgmt') {
+    renderVendorManagementView();
+  } else if (state.activeTab === 'payout_mgmt') {
+    renderPayoutManagementView();
   } else {
     renderMain();
   }
 }
+window.switchCity = switchCity;
+window.selectCity = switchCity;
 
 function openAddCityModal() {
   const container = document.getElementById('modalContainer');

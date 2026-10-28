@@ -112,9 +112,19 @@ const superAdminKrishna = {
 
 let currentUser = (store.data && store.data.users && store.data.users.find(u => u.role === 'super_admin')) || superAdminKrishna;
 
+function normalizeCityCode(raw) {
+  if (!raw) return 'VIJ';
+  const s = String(raw).trim().toUpperCase();
+  if (s === 'VIJAYAWADA' || s === 'VIJ') return 'VIJ';
+  if (s === 'HYDERABAD' || s === 'HYD') return 'HYD';
+  if (s === 'VISAKHAPATNAM' || s === 'VIZAG' || s === 'VSP') return 'VSP';
+  if (s === 'BENGALURU' || s === 'BANGALORE' || s === 'BLR') return 'BLR';
+  return s;
+}
+
 function getRequestCity(req) {
   const c = req.headers['x-city-id'] || req.query.cityId || req.query.city || (req.body && (req.body.cityId || req.body.city)) || 'VIJ';
-  return String(c).trim().toUpperCase();
+  return normalizeCityCode(c);
 }
 
 function getRequestUser(req) {

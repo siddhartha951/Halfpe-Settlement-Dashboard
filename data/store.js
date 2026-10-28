@@ -99,6 +99,16 @@ function formatBillCopy(raw) {
   return digits || str;
 }
 
+function normalizeCityCode(raw) {
+  if (!raw) return 'VIJ';
+  const s = String(raw).trim().toUpperCase();
+  if (s === 'VIJAYAWADA' || s === 'VIJ') return 'VIJ';
+  if (s === 'HYDERABAD' || s === 'HYD') return 'HYD';
+  if (s === 'VISAKHAPATNAM' || s === 'VIZAG' || s === 'VSP') return 'VSP';
+  if (s === 'BENGALURU' || s === 'BANGALORE' || s === 'BLR') return 'BLR';
+  return s;
+}
+
 class Store {
   constructor() {
     this.data = this.load();
@@ -324,7 +334,7 @@ class Store {
     const vendor = this.data.vendors.find(v => v.id === vendorId);
     if (!vendor) return null;
 
-    const targetCityId = (cityId || vendor.cityId || 'VIJ').toUpperCase();
+    const targetCityId = normalizeCityCode(cityId || vendor.cityId || 'VIJ');
 
     let vendorBills = this.data.billRows.filter(r => r.vendorId === vendorId && (r.cityId || 'VIJ').toUpperCase() === targetCityId);
     vendorBills = this.filterByDateRange(vendorBills, 'createdAt', startDate, endDate);
@@ -371,7 +381,7 @@ class Store {
   }
 
   getAllVendorsSummary(options = {}) {
-    const targetCityId = (options.cityId || 'VIJ').toUpperCase();
+    const targetCityId = normalizeCityCode(options.cityId || 'VIJ');
     const cityVendors = (this.data.vendors || []).filter(v => (v.cityId || 'VIJ').toUpperCase() === targetCityId);
 
     // BUG-17: Selecting a new city starts with fresh zero values
@@ -447,7 +457,7 @@ class Store {
 
   getAuditLogs(filters = {}) {
     let logs = this.data.auditLog || [];
-    const targetCityId = (filters.cityId || 'VIJ').toUpperCase();
+    const targetCityId = normalizeCityCode(filters.cityId || 'VIJ');
     logs = logs.filter(l => (l.cityId || 'VIJ').toUpperCase() === targetCityId);
     if (filters.action) logs = logs.filter(l => l.action === filters.action);
     if (filters.entity) logs = logs.filter(l => l.entity === filters.entity);
@@ -482,7 +492,7 @@ class Store {
   // Internal Orders Management (Krishna's New Staging OMS)
   // -------------------------------------------------------------
   recordInternalOrder(orderData, user = 'POS Billing Terminal') {
-    const targetCityId = (orderData.cityId || orderData.city || 'VIJ').toUpperCase();
+    const targetCityId = normalizeCityCode(orderData.cityId || orderData.city || 'VIJ');
     const rawBillNo = formatBillCopy(orderData.billNo || orderData.bill_number || `${targetCityId}-${Date.now().toString().slice(-5)}`);
     const paymentId = (orderData.payment && (orderData.payment.paymentId || orderData.payment.razorpay_payment_id)) || '';
     const clientOrderRef = orderData.clientOrderRef ? String(orderData.clientOrderRef).trim() : '';
@@ -690,7 +700,7 @@ class Store {
 
   getInternalOrders(filters = {}) {
     let orders = [...(this.data.internalOrders || [])];
-    const targetCityId = (filters.cityId || 'VIJ').toUpperCase();
+    const targetCityId = normalizeCityCode(filters.cityId || 'VIJ');
     orders = orders.filter(o => (o.cityId || 'VIJ').toUpperCase() === targetCityId);
 
     if (filters.vendorId && filters.vendorId !== 'all') {
@@ -1163,7 +1173,7 @@ class Store {
       includeInactive = options;
     } else if (typeof options === 'object' && options !== null) {
       includeInactive = Boolean(options.includeInactive);
-      if (options.cityId) targetCityId = options.cityId.toUpperCase();
+      if (options.cityId) targetCityId = normalizeCityCode(options.cityId);
     }
 
     let list = this.data.vendors.filter(v => (v.cityId || 'VIJ').toUpperCase() === targetCityId);
