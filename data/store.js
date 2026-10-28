@@ -2,8 +2,19 @@ const fs = require('fs');
 const path = require('path');
 const ShopifyClient = require('./shopify-client');
 
-const DB_PATH = path.join(__dirname, 'database.json');
+const BUNDLED_DB_PATH = path.join(__dirname, 'database.json');
+const DB_PATH = process.env.DATA_DIR ? path.join(process.env.DATA_DIR, 'database.json') : BUNDLED_DB_PATH;
 const SEED_PATH = path.join(__dirname, 'database.seed.json');
+
+// First boot on an empty volume: copy the snapshot shipped with the code once. An existing file is never overwritten.
+if (DB_PATH !== BUNDLED_DB_PATH && !fs.existsSync(DB_PATH)) {
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  if (fs.existsSync(BUNDLED_DB_PATH)) {
+    fs.copyFileSync(BUNDLED_DB_PATH, DB_PATH);
+    console.log(`[Store] Seeded persistent database at ${DB_PATH} from bundled snapshot`);
+  }
+}
+console.log(`[Store] Using database file: ${DB_PATH}`);
 
 // Default Vijayawada Event Seed
 const defaultCities = [
@@ -167,7 +178,9 @@ class Store {
   save(dataToSave) {
     const data = dataToSave || this.data;
     try {
-      fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf8');
+      const tmpPath = DB_PATH + '.tmp';
+      fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
+      fs.renameSync(tmpPath, DB_PATH);
     } catch (err) {
       console.error('Failed to persist database:', err);
     }

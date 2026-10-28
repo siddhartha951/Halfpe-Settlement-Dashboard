@@ -345,8 +345,8 @@
     {
       "id": "v_SKC",
       "eventId": "HPD-VIJ-OCT2026",
-      "stallNo": "Stall 30",
-      "name": "S&K Clothing Co.",
+      "stallNo": "Stall 04",
+      "name": "Sri kleemkara creations",
       "code": "SKC",
       "category": "Clothing",
       "webkulSellerId": "WK-SKC",
@@ -825,10 +825,10 @@
     {
       "id": "v_RSE",
       "eventId": "HPD-VIJ-OCT2026",
-      "stallNo": "Stall 73 & 74",
-      "name": "Raza Silk estate",
+      "stallNo": "Stall 24",
+      "name": "Rajasyamala enterprises",
       "code": "RSE",
-      "category": "Silk Sarees",
+      "category": "Sarees",
       "webkulSellerId": "WK-RSE",
       "commissionPct": 15,
       "active": true,
@@ -869,9 +869,48 @@
       "commissionPct": 15,
       "active": true,
       "cityId": "VIJ"
+    },
+    {
+      "id": "v_STV_5407",
+      "cityId": "HYD",
+      "eventId": "HPD-HYD-OCT2026",
+      "stallNo": "Stall 512",
+      "name": "Siddhartha Testing Vendor-1",
+      "code": "STV",
+      "category": "Electronics",
+      "webkulSellerId": "WK-STV",
+      "commissionPct": 15,
+      "phone": "9839074904",
+      "upiId": "",
+      "bankDetails": "",
+      "active": true,
+      "createdAt": "2026-10-28T17:13:15.407Z"
     }
   ],
   "billRows": [
+    {
+      "id": "row_ord_1793207670938_120_1",
+      "cityId": "HYD",
+      "eventId": "HPD-VIJ-OCT2026",
+      "vendorId": "v_STV_5407",
+      "billCopyNo": "SA-101",
+      "billAmount": 5,
+      "paymentMode": "Cash on Delivery (COD) · Counter POS",
+      "paymentOrderRef": "CASH_638388",
+      "shopifyOrderId": "7424292290626",
+      "customerName": "Siddhartha Test Order",
+      "mobile": "9336167136",
+      "source": "Internal Order Flow",
+      "status": "Paid",
+      "isApproved": true,
+      "isVoid": false,
+      "voidReason": null,
+      "mismatchFlag": false,
+      "createdAt": "2026-10-28T17:14:30.522Z",
+      "internalOrderId": "ord_1793207670938_120",
+      "stallNo": "Stall 512",
+      "rawMobile": "9336167136"
+    },
     {
       "id": "row_ord_1793169209030_539_1",
       "eventId": "HPD-VIJ-OCT2026",
@@ -44324,6 +44363,149 @@
   ],
   "auditLog": [
     {
+      "id": "aud_1793207946403_610",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T17:19:06.403Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1268 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1793207730311_574",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T17:15:30.311Z",
+      "user": "Krishna (Super Admin)",
+      "action": "PUSH_TO_SHOPIFY_SUCCESS",
+      "entity": "internal_orders",
+      "entityId": "ord_1793207670938_120",
+      "field": "shopifyOrderId",
+      "oldValue": "",
+      "newValue": "795812 (ID: 7424292290626)",
+      "reason": "Successfully pushed approved internal order to Shopify"
+    },
+    {
+      "id": "aud_1793207670939_505",
+      "cityId": "HYD",
+      "timestamp": "2026-10-28T17:14:30.939Z",
+      "user": "Krishna (Super Admin)",
+      "action": "ORDER_RECORDED",
+      "entity": "internal_orders",
+      "entityId": "ord_1793207670938_120",
+      "field": "all",
+      "oldValue": "",
+      "newValue": "Bill #261028-4353 for ₹5 (Stall 512)",
+      "reason": "Recorded internally before Shopify push"
+    },
+    {
+      "id": "aud_1793207646266_439",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T17:14:06.266Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1267 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1793207595407_917",
+      "cityId": "HYD",
+      "timestamp": "2026-10-28T17:13:15.407Z",
+      "user": "Krishna (Super Admin)",
+      "action": "VENDOR_CREATED",
+      "entity": "vendors",
+      "entityId": "v_STV_5407",
+      "field": "all",
+      "oldValue": "",
+      "newValue": "Siddhartha Testing Vendor-1 (Stall 512)",
+      "reason": "Vendor added to directory"
+    },
+    {
+      "id": "aud_1793207346109_445",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T17:09:06.109Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1267 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1793207046139_382",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T17:04:06.139Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1267 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1793206746125_855",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T16:59:06.125Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1267 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1793206446252_110",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T16:54:06.252Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1267 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1793206146110_291",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T16:49:06.110Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1267 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
+      "id": "aud_1793205847995_446",
+      "cityId": "VIJ",
+      "timestamp": "2026-10-28T16:44:07.995Z",
+      "user": "System (Shopify Sync)",
+      "action": "SHOPIFY_SYNC",
+      "entity": "shopify",
+      "entityId": "all",
+      "field": "orders",
+      "oldValue": "",
+      "newValue": "1267 orders → 1952 bills",
+      "reason": "Sync from 2026-10-06T00:00:00+05:30 completed with 50 vendors matched"
+    },
+    {
       "id": "aud_1793205764577_350",
       "cityId": "VIJ",
       "timestamp": "2026-10-28T16:42:44.577Z",
@@ -53857,6 +54039,115 @@
     ]
   },
   "internalOrders": [
+    {
+      "id": "ord_1793207670938_120",
+      "billNo": "261028-4353",
+      "clientOrderRef": "HPD-HYD-261028-4353",
+      "eventId": "HPD-HYD-OCT2026",
+      "cityId": "HYD",
+      "customer": {
+        "name": "Siddhartha Test Order",
+        "phone": "9336167136",
+        "email": "",
+        "rawPhone": "9336167136"
+      },
+      "vendorId": "v_STV_5407",
+      "vendorName": "Siddhartha Testing Vendor-1",
+      "stallNo": "Stall 512",
+      "commissionPct": 15,
+      "items": [
+        {
+          "id": "item_2i2t9341m",
+          "stallNo": "512",
+          "vendorName": "Siddhartha Testing Vendor-1",
+          "billCopyNo": "SA-101",
+          "title": "STV-Mobile Phone",
+          "isCustomTitle": true,
+          "eventPrice": 5,
+          "mrp": 10,
+          "sku": "HPD-SID512-0001",
+          "quantity": 1
+        }
+      ],
+      "stallGroups": [
+        {
+          "stallNo": "512",
+          "vendorName": "Siddhartha Testing Vendor-1",
+          "itemsCount": 1,
+          "subtotal": 5,
+          "billCopyNos": [
+            "SA-101"
+          ],
+          "items": [
+            {
+              "id": "item_2i2t9341m",
+              "stallNo": "512",
+              "vendorName": "Siddhartha Testing Vendor-1",
+              "billCopyNo": "SA-101",
+              "title": "STV-Mobile Phone",
+              "isCustomTitle": true,
+              "eventPrice": 5,
+              "mrp": 10,
+              "sku": "HPD-SID512-0001"
+            }
+          ],
+          "billCopyNo": "SA-101"
+        }
+      ],
+      "vendorAllocations": [
+        {
+          "vendorId": "v_STV_5407",
+          "vendorName": "Siddhartha Testing Vendor-1",
+          "stallNo": "Stall 512",
+          "billBookNo": "SA-101",
+          "amount": 5,
+          "commissionPct": 15,
+          "commissionAmount": 0.75,
+          "netPayable": 4.25,
+          "items": [
+            {
+              "id": "item_2i2t9341m",
+              "stallNo": "512",
+              "vendorName": "Siddhartha Testing Vendor-1",
+              "billCopyNo": "SA-101",
+              "title": "STV-Mobile Phone",
+              "isCustomTitle": true,
+              "eventPrice": 5,
+              "mrp": 10,
+              "sku": "HPD-SID512-0001"
+            }
+          ]
+        }
+      ],
+      "totals": {
+        "grossAmount": 5,
+        "commissionPct": 15,
+        "commissionAmount": 0.75,
+        "totalPayable": 4.25
+      },
+      "payment": {
+        "method": "Cash on Delivery (COD) · Counter POS",
+        "paymentId": "CASH_638388",
+        "status": "PAID",
+        "verifiedVia": "Razorpay Gateway / POS",
+        "timestamp": "2026-10-28T17:14:30.522Z"
+      },
+      "status": "APPROVED",
+      "shopifySyncStatus": "PUSHED",
+      "shopifyOrderId": "7424292290626",
+      "shopifyOrderNumber": 795812,
+      "shopifyError": null,
+      "pushedAt": "2026-10-28T17:15:30.309Z",
+      "pushedBy": "Krishna (Super Admin)",
+      "totalPayable": 4.25,
+      "amountPaid": 0,
+      "outstandingBalance": 4.25,
+      "payoutStatus": "UNPAID",
+      "payoutAllocations": [],
+      "source": "POS Billing Desk (Dual-Sync)",
+      "createdAt": "2026-10-28T17:14:30.522Z",
+      "updatedAt": "2026-10-28T17:15:30.309Z"
+    },
     {
       "id": "ord_1793169209030_539",
       "billNo": "HPD-VIJ-261028-1133",
