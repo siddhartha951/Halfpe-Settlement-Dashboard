@@ -280,12 +280,12 @@ function updateNewCityUrlPreview() {
   if (!box) return;
   const code = previewCityCode(document.getElementById('newCityName').value);
   if (!code) {
-    box.innerHTML = '<span style="color: var(--notion-secondary);">City name daalte hi yahan billing URL dikhega</span>';
+    box.innerHTML = '<span style="color: var(--notion-secondary);">Enter a city name to see its billing URL</span>';
     return;
   }
   const taken = state.cities.some(c => normalizeCityCode(c.code || c.id) === normalizeCityCode(code));
   box.innerHTML = taken
-    ? `<span style="color: #c62828;">⚠️ Code <b>${escapeHtml(code)}</b> pehle se kisi city ka hai. Naam ke pehle 3 letters badlo.</span>`
+    ? `<span style="color: #c62828;">⚠️ Code <b>${escapeHtml(code)}</b> is already used by another city. Change the first 3 letters of the name.</span>`
     : `City code: <b>${escapeHtml(code)}</b><br><code style="word-break: break-all;">${escapeHtml(getCityBillingUrl(code))}</code>`;
 }
 window.updateNewCityUrlPreview = updateNewCityUrlPreview;
@@ -351,7 +351,7 @@ function openAddCityModal() {
 
         <div style="margin-bottom: 14px;">
           <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">
-            Billing Page URL (billing staff ko ye link dena hai)
+            Billing Page URL (share this link with billing staff)
           </label>
           <div id="newCityUrlPreview" style="font-size: 0.8rem; padding: 8px 10px; background: var(--notion-surface-warm); border: 1px solid var(--notion-hairline); border-radius: var(--radius-sm);"></div>
         </div>
