@@ -1,3 +1,12 @@
+function formatBillCopy(raw) {
+  if (!raw) return '-';
+  if (Array.isArray(raw)) return raw.map(formatBillCopy).filter(Boolean).join(', ');
+  const str = String(raw).trim();
+  const digits = str.replace(/^[^0-9]+/, '');
+  return digits || str;
+}
+window.formatBillCopy = formatBillCopy;
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -26,11 +35,14 @@ window.fetch = function(url, options) {
     activeUser = { id: 'usr_1', email: 'admin@halfpe.com', role: 'super_admin' };
   }
 
+  const activeCityId = (typeof state !== 'undefined' && state.currentCityId) ? state.currentCityId : 'VIJ';
   if (options.headers instanceof Headers) {
+    if (!options.headers.has('x-city-id')) options.headers.set('x-city-id', activeCityId);
     if (!options.headers.has('x-user-id')) options.headers.set('x-user-id', activeUser.id);
     if (!options.headers.has('x-user-email')) options.headers.set('x-user-email', activeUser.email || '');
     if (!options.headers.has('x-user-role')) options.headers.set('x-user-role', activeUser.role || '');
   } else {
+    if (!options.headers['x-city-id']) options.headers['x-city-id'] = activeCityId;
     if (!options.headers['x-user-id']) options.headers['x-user-id'] = activeUser.id;
     if (!options.headers['x-user-email']) options.headers['x-user-email'] = activeUser.email || '';
     if (!options.headers['x-user-role']) options.headers['x-user-role'] = activeUser.role || '';
@@ -1830,9 +1842,7 @@ async function renderOverallSettlementView() {
         </p>
       </div>
       <div style="display: flex; gap: 8px;">
-        <button class="btn btn-outline btn-sm" onclick="exportOverallSettlementCSV()">
-          📊 Export CSV / Excel
-        </button>
+        <!-- Export moved to consolidated Export dropdown in nav bar per BUG-23 -->
         <button class="btn btn-primary btn-sm" onclick="refreshDashboard()">
           🔄 Refresh
         </button>
@@ -3986,9 +3996,7 @@ async function renderOrdersManagementView() {
               🚀 Bulk Approve & Push to Shopify
             </button>
           ` : ''}
-          <button class="btn btn-outline btn-sm" onclick="exportOrdersManagementCSV()">
-            📥 Export Orders CSV
-          </button>
+          <!-- Export moved to consolidated Export dropdown in nav bar per BUG-23 -->
           <button class="btn btn-outline btn-sm" onclick="renderOrdersManagementView()">
             🔄 Refresh Orders
           </button>
@@ -5624,19 +5632,21 @@ async function handlePayoutVendorSelect(vendorId) {
           <span>Unpaid / Partially Paid Orders (${orders.length})</span>
           <span style="font-size: 0.75rem; color: #0075DE;">Click "Select All" or choose individual orders</span>
         </div>
-        <div style="max-height: 260px; overflow-y: auto;">
+                <div style="max-height: 280px; overflow-y: auto;">
           <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
             <thead>
               <tr style="background: #fafafa; border-bottom: 1px solid var(--notion-hairline); text-align: left;">
-                <th style="padding: 8px 10px; width: 40px; text-align: center;">
+                <th style="padding: 8px 10px; width: 36px; text-align: center;">
                   <input type="checkbox" id="selectAllPayoutOrders" onchange="toggleSelectAllPayoutOrders(this.checked)" title="Select All Unpaid Orders">
                 </th>
-                <th style="padding: 8px 10px;">Bill #</th>
+                <th style="padding: 8px 10px;">Bill copy no.</th>
+                <th style="padding: 8px 10px; text-align: right;">Total amount</th>
+                <th style="padding: 8px 10px; text-align: right;">Commission</th>
                 <th style="padding: 8px 10px; text-align: right;">Payable</th>
                 <th style="padding: 8px 10px; text-align: right;">Paid</th>
                 <th style="padding: 8px 10px; text-align: right; color: #E32D14;">Outstanding</th>
-                <th style="padding: 8px 10px; text-align: right; width: 130px;">Allocate (₹)</th>
-                <th style="padding: 8px 10px; text-align: center; width: 60px;">Action</th>
+                <th style="padding: 8px 10px; text-align: right; width: 110px;">Allocate (₹)</th>
+                <th style="padding: 8px 10px; text-align: center; width: 55px;">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -5650,11 +5660,13 @@ async function handlePayoutVendorSelect(vendorId) {
                       onchange="handleOrderPayoutCheckChange(${idx}, this.checked)"
                     >
                   </td>
-                  <td style="padding: 8px 10px;">
-                    <strong>${escapeHtml(o.billNo)}</strong>
-                    <div style="font-size: 0.7rem; color: var(--notion-muted);">${formatDate(o.date)}</div>
+                  <td style="padding: 8px 10px;" title="${escapeHtml(o.systemRef || o.billNo)}">
+                    <strong>${escapeHtml(formatBillCopy(o.billCopyDisplay || o.billNo))}</strong>
+                    <div style="font-size: 0.7rem; color: var(--notion-muted);">${formatDate(o.createdAt || o.date)}</div>
                   </td>
-                  <td style="padding: 8px 10px; text-align: right;">₹${Number(o.totalPayable).toLocaleString('en-IN')}</td>
+                  <td style="padding: 8px 10px; text-align: right;">₹${Number(o.grossAmount || o.totalPayable).toLocaleString('en-IN')}</td>
+                  <td style="padding: 8px 10px; text-align: right; color: #D97706;">₹${Number(o.commissionAmount || 0).toLocaleString('en-IN')}</td>
+                  <td style="padding: 8px 10px; text-align: right; font-weight: 600;">₹${Number(o.totalPayable).toLocaleString('en-IN')}</td>
                   <td style="padding: 8px 10px; text-align: right; color: #28a745;">₹${Number(o.amountPaid || 0).toLocaleString('en-IN')}</td>
                   <td style="padding: 8px 10px; text-align: right; font-weight: 700; color: #E32D14;">
                     ₹${Number(o.outstandingBalance).toLocaleString('en-IN')}
@@ -5672,9 +5684,19 @@ async function handlePayoutVendorSelect(vendorId) {
                 </tr>
               `).join('')}
             </tbody>
+            <tfoot style="background: var(--notion-surface-warm); border-top: 2px solid var(--notion-hairline); font-weight: 700; font-size: 0.8rem;">
+              <tr>
+                <td colspan="2" style="padding: 8px 10px;" id="payoutFooterSelectionCount">All listed (${orders.length})</td>
+                <td style="padding: 8px 10px; text-align: right;" id="payoutFooterGross">₹0.00</td>
+                <td style="padding: 8px 10px; text-align: right; color: #D97706;" id="payoutFooterComm">₹0.00</td>
+                <td style="padding: 8px 10px; text-align: right;" id="payoutFooterPayable">₹0.00</td>
+                <td colspan="2"></td>
+                <td style="padding: 8px 10px; text-align: right; color: #1AAE39;" id="payoutFooterAllocated">₹0.00</td>
+                <td></td>
+              </tr>
+            </tfoot>
           </table>
-        </div>
-      </div>
+        </div></div>
     `;
 
     recalculatePayoutAllocations();
@@ -6885,3 +6907,71 @@ function toast(message, type = 'info') {
 
 // Run on window load
 window.addEventListener('DOMContentLoaded', init);
+
+// -------------------------------------------------------------
+// Universal Export Engine & Dropdown Handler (BUG-23)
+// -------------------------------------------------------------
+function toggleExportDropdown(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('exportDropdownMenu');
+  if (!menu) return;
+  const isHidden = menu.style.display === 'none';
+  menu.style.display = isHidden ? 'block' : 'none';
+  
+  if (isHidden) {
+    const closeHandler = (evt) => {
+      const wrap = document.getElementById('navExportDropdownWrap');
+      if (wrap && !wrap.contains(evt.target)) {
+        menu.style.display = 'none';
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 10);
+  }
+}
+window.toggleExportDropdown = toggleExportDropdown;
+
+async function triggerUniversalExport(dataset, format = 'csv') {
+  const menu = document.getElementById('exportDropdownMenu');
+  if (menu) menu.style.display = 'none';
+
+  try {
+    toast(`Preparing ${dataset} export in ${format.toUpperCase()}...`, 'info');
+    const params = new URLSearchParams({
+      format,
+      cityId: state.currentCityId || 'VIJ'
+    });
+    if (state.startDate) params.append('startDate', state.startDate);
+    if (state.endDate) params.append('endDate', state.endDate);
+    if (state.selectedGlobalVendor && state.selectedGlobalVendor !== 'all') {
+      params.append('vendorId', state.selectedGlobalVendor);
+    }
+
+    const res = await fetch(`/api/export/${dataset}?${params.toString()}`, {
+      headers: { 'x-city-id': state.currentCityId || 'VIJ' }
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Export failed' }));
+      throw new Error(err.error || 'Server rejected export request');
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    a.download = match ? match[1] : `${dataset}_${state.currentCityId || 'VIJ'}.${format === 'xlsx' ? 'csv' : format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    toast(`✓ ${dataset} export downloaded successfully!`, 'success');
+  } catch (err) {
+    console.error('Universal export error:', err);
+    toast(`Export error: ${err.message}`, 'error');
+  }
+}
+window.triggerUniversalExport = triggerUniversalExport;
+

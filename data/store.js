@@ -6,6 +6,13 @@ const DB_PATH = path.join(__dirname, 'database.json');
 const SEED_PATH = path.join(__dirname, 'database.seed.json');
 
 // Default Vijayawada Event Seed
+const defaultCities = [
+  { id: 'VIJ', code: 'VIJ', name: 'Vijayawada Expo', venue: 'SVN Conventions, Poranki', dates: '8–11 Oct 2026', defaultCommissionPct: 15, isActive: true },
+  { id: 'HYD', code: 'HYD', name: 'Hyderabad Expo', venue: 'Hitex Exhibition Centre, Madhapur', dates: '15–18 Oct 2026', defaultCommissionPct: 15, isActive: true },
+  { id: 'VSP', code: 'VSP', name: 'Visakhapatnam Expo', venue: 'AU Convention Center', dates: '22–25 Oct 2026', defaultCommissionPct: 15, isActive: true },
+  { id: 'BLR', code: 'BLR', name: 'Bengaluru Expo', venue: 'Tripuravasini Palace Grounds', dates: '29 Oct–1 Nov 2026', defaultCommissionPct: 15, isActive: true }
+];
+
 const defaultEvent = {
   id: 'HPD-VIJ-OCT2026',
   name: 'Half Price Days - Vijayawada Retail Expo',
@@ -82,6 +89,16 @@ const defaultUsers = [
   }
 ];
 
+function formatBillCopy(raw) {
+  if (!raw) return '';
+  if (Array.isArray(raw)) {
+    return raw.map(formatBillCopy).filter(Boolean).join(', ');
+  }
+  const str = String(raw).trim();
+  const digits = str.replace(/^[^0-9]+/, '');
+  return digits || str;
+}
+
 class Store {
   constructor() {
     this.data = this.load();
@@ -103,17 +120,26 @@ class Store {
         if (!parsed.users) parsed.users = defaultUsers;
         if (!parsed.events) parsed.events = [defaultEvent];
         if (!parsed.internalOrders) parsed.internalOrders = [];
-        if (parsed.vendors) {
-          parsed.vendors.forEach(v => {
-            if (v.active === undefined) v.active = true;
-          });
-        }
+        if (!parsed.cities || parsed.cities.length === 0) parsed.cities = defaultCities;
+        
+        // BUG-19 backfill cityId on all entities
+        (parsed.vendors || []).forEach(v => {
+          if (!v.cityId) v.cityId = 'VIJ';
+          if (v.active === undefined) v.active = true;
+        });
+        (parsed.billRows || []).forEach(b => { if (!b.cityId) b.cityId = 'VIJ'; });
+        (parsed.internalOrders || []).forEach(o => { if (!o.cityId) o.cityId = 'VIJ'; });
+        (parsed.returns || []).forEach(r => { if (!r.cityId) r.cityId = 'VIJ'; });
+        (parsed.payouts || []).forEach(p => { if (!p.cityId) p.cityId = 'VIJ'; });
+        (parsed.auditLog || []).forEach(a => { if (!a.cityId) a.cityId = 'VIJ'; });
+
         return parsed;
       }
     } catch (err) {
       console.error('Failed to read db, initializing fresh store:', err);
     }
     const fresh = {
+      cities: defaultCities,
       events: [defaultEvent],
       users: defaultUsers,
       vendors: [],
@@ -144,49 +170,29 @@ class Store {
     const masterVendors = ShopifyClient.loadVijayawadaVendorsMaster();
     if (!masterVendors || masterVendors.length === 0) return;
 
-    // Check if store has old fake vendors (e.g. v_101) or is empty
-    const hasOldVendors = !this.data.vendors || this.data.vendors.length === 0 || 
-      this.data.vendors.some(v => v.id === 'v_101' || v.name === 'Sri Balaji Handlooms & Sarees');
+    if (!this.data.vendors) this.data.vendors = [];
+    const vijVendors = this.data.vendors.filter(v => (v.cityId || 'VIJ').toUpperCase() === 'VIJ');
 
-    if (hasOldVendors || this.data.vendors.length < masterVendors.length) {
-      console.log(`[Store] Initializing ${masterVendors.length} real Vijayawada event vendors...`);
-
-      // Preserve existing commission settings if any
-      const existingCommissionMap = {};
-      (this.data.vendors || []).forEach(v => {
-        if (v.commissionPct !== undefined) existingCommissionMap[v.id] = v.commissionPct;
-      });
-
-      this.data.vendors = masterVendors.map(v => ({
+    // BUG-25: Only seed Vijayawada vendors if none exist for Vijayawada. NEVER wipe existing or other cities!
+    if (vijVendors.length === 0) {
+      console.log(`[Store] Seeding ${masterVendors.length} Vijayawada vendors with cityId: VIJ...`);
+      const newVij = masterVendors.map(v => ({
         id: `v_${v.vendor_code}`,
+        cityId: 'VIJ',
         eventId: 'HPD-VIJ-OCT2026',
         stallNo: v.stall_no.toLowerCase().includes('stall') ? v.stall_no : `Stall ${v.stall_no}`,
         name: v.vendor_name,
         code: v.vendor_code,
         category: v.category,
         webkulSellerId: `WK-${v.vendor_code}`,
-        commissionPct: existingCommissionMap[`v_${v.vendor_code}`] ?? 15.0
+        commissionPct: 15.0,
+        active: true
       }));
-
-      // Sort by stall number naturally
-      this.data.vendors.sort((a, b) => {
-        const numA = parseInt(a.stallNo.replace(/\D/g, '') || '999', 10);
-        const numB = parseInt(b.stallNo.replace(/\D/g, '') || '999', 10);
-        return numA - numB;
-      });
-
-      // Clear legacy dummy bills if only old seed rows were present
-      if (hasOldVendors && this.data.billRows && this.data.billRows.some(r => r.vendorId === 'v_101')) {
-        this.data.billRows = this.data.billRows.filter(r => r.vendorId !== 'v_101' && r.vendorId !== 'v_102' && r.vendorId !== 'v_103');
-      }
-
+      this.data.vendors.push(...newVij);
       this.save();
     }
   }
 
-  /**
-   * Initializes users, credentials, designations, and permissions
-   */
   initUsers() {
     if (!this.data.users || this.data.users.length === 0) {
       this.data.users = defaultUsers;
@@ -314,17 +320,19 @@ class Store {
 
   // Calculation helpers per Section 7 with date range filter support
   getVendorSummary(vendorId, options = {}) {
-    const { startDate, endDate } = options;
+    const { startDate, endDate, cityId } = options;
     const vendor = this.data.vendors.find(v => v.id === vendorId);
     if (!vendor) return null;
 
-    let vendorBills = this.data.billRows.filter(r => r.vendorId === vendorId);
+    const targetCityId = (cityId || vendor.cityId || 'VIJ').toUpperCase();
+
+    let vendorBills = this.data.billRows.filter(r => r.vendorId === vendorId && (r.cityId || 'VIJ').toUpperCase() === targetCityId);
     vendorBills = this.filterByDateRange(vendorBills, 'createdAt', startDate, endDate);
 
     const nonVoidBills = vendorBills.filter(r => !r.isVoid && r.isApproved !== false);
     const grossSales = nonVoidBills.reduce((acc, r) => acc + Number(r.billAmount || 0), 0);
 
-    let vendorReturns = this.data.returns.filter(ret => ret.vendorId === vendorId);
+    let vendorReturns = this.data.returns.filter(ret => ret.vendorId === vendorId && (ret.cityId || 'VIJ').toUpperCase() === targetCityId);
     vendorReturns = this.filterByDateRange(vendorReturns, 'date', startDate, endDate);
 
     const totalReturns = vendorReturns.reduce((acc, ret) => acc + Number(ret.amount || 0), 0);
@@ -333,7 +341,7 @@ class Store {
     const commissionAmount = Math.round((netSales * (commissionPct / 100)) * 100) / 100;
     const settlementPayable = Math.round(Math.max(0, netSales - commissionAmount) * 100) / 100;
 
-    let vendorPayouts = this.data.payouts.filter(p => p.vendorId === vendorId);
+    let vendorPayouts = this.data.payouts.filter(p => p.vendorId === vendorId && (p.cityId || 'VIJ').toUpperCase() === targetCityId);
     vendorPayouts = this.filterByDateRange(vendorPayouts, 'date', startDate, endDate);
 
     const totalPaid = Math.round(vendorPayouts.reduce((acc, p) => acc + Number(p.amount || 0), 0) * 100) / 100;
@@ -363,7 +371,29 @@ class Store {
   }
 
   getAllVendorsSummary(options = {}) {
-    const list = this.data.vendors.map(v => this.getVendorSummary(v.id, options));
+    const targetCityId = (options.cityId || 'VIJ').toUpperCase();
+    const cityVendors = (this.data.vendors || []).filter(v => (v.cityId || 'VIJ').toUpperCase() === targetCityId);
+
+    // BUG-17: Selecting a new city starts with fresh zero values
+    if (cityVendors.length === 0) {
+      return {
+        vendors: [],
+        eventTotals: {
+          totalOrders: 0,
+          grossSales: 0,
+          totalReturns: 0,
+          netSales: 0,
+          totalCommission: 0,
+          settlementPayable: 0,
+          alreadyPaid: 0,
+          balanceToPay: 0
+        },
+        lastShopifySync: this.data.lastShopifySync || null,
+        lastSyncStats: this.data.lastSyncStats || null
+      };
+    }
+
+    const list = cityVendors.map(v => this.getVendorSummary(v.id, { ...options, cityId: targetCityId }));
     
     // Overall Event Totals
     const eventTotals = list.reduce((acc, item) => {
@@ -395,9 +425,10 @@ class Store {
     };
   }
 
-  logAudit(user, action, entity, entityId, field, oldValue, newValue, reason) {
+  logAudit(user, action, entity, entityId, field, oldValue, newValue, reason, cityId = 'VIJ') {
     const entry = {
       id: 'aud_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      cityId: String(cityId || 'VIJ').toUpperCase(),
       timestamp: new Date().toISOString(),
       user: user || 'Unknown Staff',
       action,
@@ -408,6 +439,7 @@ class Store {
       newValue: String(newValue ?? ''),
       reason: reason || 'Not specified'
     };
+    if (!this.data.auditLog) this.data.auditLog = [];
     this.data.auditLog.unshift(entry);
     this.save();
     return entry;
@@ -415,11 +447,14 @@ class Store {
 
   getAuditLogs(filters = {}) {
     let logs = this.data.auditLog || [];
+    const targetCityId = (filters.cityId || 'VIJ').toUpperCase();
+    logs = logs.filter(l => (l.cityId || 'VIJ').toUpperCase() === targetCityId);
     if (filters.action) logs = logs.filter(l => l.action === filters.action);
     if (filters.entity) logs = logs.filter(l => l.entity === filters.entity);
     if (filters.limit) logs = logs.slice(0, filters.limit);
     return logs;
   }
+
 
   _groupItemsByStall(items) {
     if (!Array.isArray(items)) return [];
@@ -447,7 +482,8 @@ class Store {
   // Internal Orders Management (Krishna's New Staging OMS)
   // -------------------------------------------------------------
   recordInternalOrder(orderData, user = 'POS Billing Terminal') {
-    const rawBillNo = (orderData.billNo || orderData.bill_number || `VIJ-${Date.now().toString().slice(-5)}`).trim();
+    const targetCityId = (orderData.cityId || orderData.city || 'VIJ').toUpperCase();
+    const rawBillNo = formatBillCopy(orderData.billNo || orderData.bill_number || `${targetCityId}-${Date.now().toString().slice(-5)}`);
     const paymentId = (orderData.payment && (orderData.payment.paymentId || orderData.payment.razorpay_payment_id)) || '';
     const clientOrderRef = orderData.clientOrderRef ? String(orderData.clientOrderRef).trim() : '';
 
@@ -455,7 +491,7 @@ class Store {
     // Never reject multiple orders for the same phone number or customer!
     let existing = null;
     if (paymentId) {
-      existing = (this.data.internalOrders || []).find(o => o.payment && o.payment.paymentId === paymentId);
+      existing = (this.data.internalOrders || []).find(o => (o.cityId || "VIJ").toUpperCase() === targetCityId && o.payment && o.payment.paymentId === paymentId);
     }
     if (!existing && clientOrderRef && clientOrderRef !== rawBillNo) {
       existing = (this.data.internalOrders || []).find(o => o.clientOrderRef === clientOrderRef);
@@ -558,12 +594,13 @@ class Store {
     const primaryVendor = vendorAllocations[0];
 
     const newOrder = {
-      id: 'ord_' + Date.now() + '_' + Math.floor(100 + Math.random() * 900),
+      id: orderData.id || ('ord_' + Date.now() + '_' + Math.floor(100 + Math.random() * 900)),
       billNo: rawBillNo,
       clientOrderRef: clientOrderRef || rawBillNo,
-      eventId: 'HPD-VIJ-OCT2026',
+      eventId: 'HPD-' + targetCityId + '-OCT2026',
+      cityId: targetCityId,
       customer: {
-        name: (orderData.customer?.name || 'Walk-in Shopper').trim(),
+        name: (orderData.customer?.name || '').trim(),
         phone: (orderData.customer?.phone || '').trim(),
         email: (orderData.customer?.email || '').trim()
       },
@@ -612,6 +649,7 @@ class Store {
       const rowId = `row_${newOrder.id}_${i + 1}`;
       const billRow = {
         id: rowId,
+        cityId: targetCityId,
         eventId: 'HPD-VIJ-OCT2026',
         vendorId: alloc.vendorId,
         billCopyNo: alloc.billBookNo || rawBillNo,
@@ -642,7 +680,8 @@ class Store {
       'all',
       null,
       `Bill #${rawBillNo} for ₹${grossAmount} (${newOrder.stallNo})`,
-      'Recorded internally before Shopify push'
+      'Recorded internally before Shopify push',
+      targetCityId
     );
 
     this.save();
@@ -651,6 +690,8 @@ class Store {
 
   getInternalOrders(filters = {}) {
     let orders = [...(this.data.internalOrders || [])];
+    const targetCityId = (filters.cityId || 'VIJ').toUpperCase();
+    orders = orders.filter(o => (o.cityId || 'VIJ').toUpperCase() === targetCityId);
 
     if (filters.vendorId && filters.vendorId !== 'all') {
       orders = orders.filter(o => 
@@ -860,22 +901,35 @@ class Store {
   // -------------------------------------------------------------
   // Order-Linked Payouts & Partial Settlements (Krishna's Requirement)
   // -------------------------------------------------------------
-  getUnpaidOrdersForVendor(vendorId) {
+  getUnpaidOrdersForVendor(vendorId, options = {}) {
     if (!vendorId) return [];
 
+    const vendor = this.data.vendors.find(v => v.id === vendorId);
+    const targetCityId = ((options && options.cityId) || (vendor && vendor.cityId) || 'VIJ').toUpperCase();
+    const commPct = vendor ? Number(vendor.commissionPct ?? 15) : 15;
+
     const results = [];
-    const internalOrders = (this.data.internalOrders || []);
+    const internalOrders = (this.data.internalOrders || []).filter(o => (o.cityId || 'VIJ').toUpperCase() === targetCityId);
     
     internalOrders.forEach(o => {
+      const cleanBill = formatBillCopy(o.billNo);
       if (o.vendorId === vendorId) {
         if (o.outstandingBalance > 0.01) {
+          const gross = Number(o.totals?.grossAmount || o.totals?.payable || 0);
+          const commAmt = Math.round((gross * (commPct / 100)) * 100) / 100;
           results.push({
             orderId: o.id,
-            billNo: o.billNo,
+            allocationId: o.id,
+            billNo: cleanBill,
+            billCopyDisplay: cleanBill,
+            systemRef: o.clientOrderRef || o.billNo,
             type: 'internal_order',
             date: o.createdAt,
+            createdAt: o.createdAt,
             customerName: o.customer?.name || 'Walk-in',
-            grossAmount: o.totals?.grossAmount || 0,
+            grossAmount: gross,
+            commissionPct: commPct,
+            commissionAmount: commAmt,
             totalPayable: o.totalPayable,
             amountPaid: o.amountPaid || 0,
             outstandingBalance: o.outstandingBalance,
@@ -886,17 +940,26 @@ class Store {
       } else if (Array.isArray(o.vendorAllocations)) {
         const alloc = o.vendorAllocations.find(a => a.vendorId === vendorId);
         if (alloc) {
-          const allocPayable = alloc.netPayable || Math.round((alloc.amount * (1 - (alloc.commissionPct / 100))) * 100) / 100;
+          const allocGross = Number(alloc.amount || 0);
+          const allocComm = Math.round((allocGross * ((alloc.commissionPct || commPct) / 100)) * 100) / 100;
+          const allocPayable = alloc.netPayable || Math.round(Math.max(0, allocGross - allocComm) * 100) / 100;
           const allocPaid = alloc.amountPaid || 0;
           const allocBal = Math.round(Math.max(0, allocPayable - allocPaid) * 100) / 100;
           if (allocBal > 0.01) {
+            const allocCleanBill = formatBillCopy(alloc.billBookNo || o.billNo);
             results.push({
               orderId: o.id,
-              billNo: alloc.billBookNo || o.billNo,
+              allocationId: `${o.id}_alloc_${alloc.vendorId}`,
+              billNo: allocCleanBill,
+              billCopyDisplay: allocCleanBill,
+              systemRef: alloc.billBookNo || o.clientOrderRef || o.billNo,
               type: 'internal_order_allocation',
               date: o.createdAt,
+              createdAt: o.createdAt,
               customerName: o.customer?.name || 'Walk-in',
-              grossAmount: alloc.amount,
+              grossAmount: allocGross,
+              commissionPct: alloc.commissionPct || commPct,
+              commissionAmount: allocComm,
               totalPayable: allocPayable,
               amountPaid: allocPaid,
               outstandingBalance: allocBal,
@@ -908,34 +971,39 @@ class Store {
       }
     });
 
-    // Also look at billRows ONLY if bills are not already tracked in internalOrders
-    const allInternalIds = new Set((this.data.internalOrders || []).map(o => o.id));
-    const allInternalBillNos = new Set((this.data.internalOrders || []).map(o => o.billNo));
+    const allInternalIds = new Set(internalOrders.map(o => o.id));
+    const allInternalBillNos = new Set(internalOrders.map(o => o.billNo));
     
     const vendorBills = (this.data.billRows || []).filter(r => 
+      (r.cityId || 'VIJ').toUpperCase() === targetCityId &&
       r.vendorId === vendorId && 
       !r.isVoid && 
       !allInternalIds.has(r.internalOrderId) && 
       !allInternalIds.has(r.id) &&
       !allInternalBillNos.has(r.billCopyNo)
     );
-    
-    const vendor = this.data.vendors.find(v => v.id === vendorId);
-    const commPct = vendor ? Number(vendor.commissionPct ?? 15) : 15;
 
     vendorBills.forEach(r => {
       const gross = Number(r.billAmount || 0);
-      const payable = Math.round((gross * (1 - (commPct / 100))) * 100) / 100;
+      const commAmt = Math.round((gross * (commPct / 100)) * 100) / 100;
+      const payable = Math.round(Math.max(0, gross - commAmt) * 100) / 100;
       const paid = Number(r.amountPaid || 0);
       const balance = Math.round(Math.max(0, payable - paid) * 100) / 100;
       if (balance > 0.01) {
+        const cleanBill = formatBillCopy(r.billCopyNo || r.id);
         results.push({
           orderId: r.id,
-          billNo: r.billCopyNo || r.id,
+          allocationId: r.id,
+          billNo: cleanBill,
+          billCopyDisplay: cleanBill,
+          systemRef: r.billCopyNo || r.id,
           type: 'bill_row',
           date: r.createdAt,
+          createdAt: r.createdAt,
           customerName: r.customerName || 'Walk-in',
           grossAmount: gross,
+          commissionPct: commPct,
+          commissionAmount: commAmt,
           totalPayable: payable,
           amountPaid: paid,
           outstandingBalance: balance,
@@ -945,7 +1013,6 @@ class Store {
       }
     });
 
-    // Prioritize orders with highest outstanding balance first
     results.sort((a, b) => b.outstandingBalance - a.outstandingBalance);
     return results;
   }
@@ -971,6 +1038,7 @@ class Store {
       throw new Error(`Allocated sum (₹${totalAllocated}) must equal payout amount (₹${totalAmount}).`);
     }
 
+    const targetCityId = (vendor.cityId || 'VIJ').toUpperCase();
     const payoutId = 'pay_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
     const payoutDate = date || new Date().toISOString();
     const adminName = typeof adminUser === 'string' ? adminUser : (adminUser?.name || 'Super Admin');
@@ -1086,10 +1154,21 @@ class Store {
   // -------------------------------------------------------------
   // Vendor Master Management (CRUD with Soft Deactivation)
   // -------------------------------------------------------------
-  getVendors(includeInactive = false) {
+  getVendors(options = false) {
     if (!this.data.vendors) return [];
-    if (includeInactive) return this.data.vendors;
-    return this.data.vendors.filter(v => v.active !== false);
+    let includeInactive = false;
+    let targetCityId = 'VIJ';
+
+    if (typeof options === 'boolean') {
+      includeInactive = options;
+    } else if (typeof options === 'object' && options !== null) {
+      includeInactive = Boolean(options.includeInactive);
+      if (options.cityId) targetCityId = options.cityId.toUpperCase();
+    }
+
+    let list = this.data.vendors.filter(v => (v.cityId || 'VIJ').toUpperCase() === targetCityId);
+    if (!includeInactive) list = list.filter(v => v.active !== false);
+    return list;
   }
 
   getVendorById(vendorId) {
@@ -1101,13 +1180,15 @@ class Store {
     const name = (vendorData.name || '').trim();
     if (!name) throw new Error('Vendor name is required.');
 
+    const targetCityId = (vendorData.cityId || 'VIJ').toUpperCase();
     const stallNo = (vendorData.stallNo || 'Stall TBD').trim();
     const code = (vendorData.code || name.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()).trim();
-    const id = `v_${code}_${Date.now().toString().slice(-4)}`;
+    const id = vendorData.id || `v_${code}_${Date.now().toString().slice(-4)}`;
 
     const newVendor = {
       id,
-      eventId: 'HPD-VIJ-OCT2026',
+      cityId: targetCityId,
+      eventId: 'HPD-' + targetCityId + '-OCT2026',
       stallNo: stallNo.toLowerCase().includes('stall') ? stallNo : `Stall ${stallNo}`,
       name,
       code,
@@ -1132,7 +1213,8 @@ class Store {
       'all',
       null,
       `${newVendor.name} (${newVendor.stallNo})`,
-      'Vendor added to directory'
+      'Vendor added to directory',
+      targetCityId
     );
 
     this.save();
@@ -1151,22 +1233,23 @@ class Store {
       const s = updates.stallNo.trim();
       vendor.stallNo = s.toLowerCase().includes('stall') ? s : `Stall ${s}`;
     }
+    if (updates.code) vendor.code = updates.code.trim().toUpperCase();
     if (updates.category) vendor.category = updates.category.trim();
-    if (updates.commissionPct !== undefined) vendor.commissionPct = Number(updates.commissionPct);
     if (updates.phone !== undefined) vendor.phone = updates.phone.trim();
     if (updates.upiId !== undefined) vendor.upiId = updates.upiId.trim();
     if (updates.bankDetails !== undefined) vendor.bankDetails = updates.bankDetails.trim();
-    vendor.updatedAt = new Date().toISOString();
+    if (updates.cityId) vendor.cityId = updates.cityId.trim().toUpperCase();
 
     this.logAudit(
       typeof user === 'string' ? user : (user.name || 'Super Admin'),
       'VENDOR_UPDATED',
       'vendors',
       vendor.id,
-      'details',
+      'profile',
       `${oldName} (${oldStall})`,
       `${vendor.name} (${vendor.stallNo})`,
-      'Vendor master details updated'
+      'Updated vendor details',
+      vendor.cityId
     );
 
     this.save();
@@ -1177,27 +1260,165 @@ class Store {
     const vendor = this.data.vendors.find(v => v.id === vendorId);
     if (!vendor) throw new Error('Vendor not found.');
 
-    vendor.active = !!active;
-    vendor.updatedAt = new Date().toISOString();
+    const oldStatus = vendor.active !== false ? 'Active' : 'Deactivated';
+    vendor.active = Boolean(active);
+    const newStatus = vendor.active ? 'Active' : 'Deactivated';
 
     this.logAudit(
       typeof user === 'string' ? user : (user.name || 'Super Admin'),
-      active ? 'VENDOR_ACTIVATED' : 'VENDOR_DEACTIVATED',
+      'VENDOR_STATUS_CHANGE',
       'vendors',
       vendor.id,
       'active',
-      String(!active),
-      String(active),
-      active ? 'Vendor activated in registry' : 'Vendor soft-deactivated/archived to preserve settlement history'
+      oldStatus,
+      newStatus,
+      `Vendor ${newStatus.toLowerCase()} by admin`,
+      vendor.cityId
     );
 
     this.save();
     return vendor;
   }
 
-  // -------------------------------------------------------------
-  // User Management & RBAC Scopes (Krishna's Super Admin Master)
-  // -------------------------------------------------------------
+  bulkUpdateVendors(vendorIds, action, value, user = 'Super Admin') {
+    if (!Array.isArray(vendorIds) || vendorIds.length === 0) {
+      throw new Error('At least one vendor must be selected.');
+    }
+
+    let updatedCount = 0;
+    vendorIds.forEach(vId => {
+      const v = this.data.vendors.find(item => item.id === vId);
+      if (v) {
+        if (action === 'activate') {
+          v.active = true;
+          updatedCount++;
+        } else if (action === 'deactivate') {
+          v.active = false;
+          updatedCount++;
+        } else if (action === 'commission') {
+          const num = parseFloat(value);
+          if (!isNaN(num) && num >= 0 && num <= 100) {
+            v.commissionPct = num;
+            updatedCount++;
+          }
+        }
+      }
+    });
+
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Super Admin'),
+      'VENDORS_BULK_UPDATE',
+      'vendors',
+      'bulk',
+      action,
+      '',
+      `${updatedCount} vendors updated (${action})`,
+      `Bulk action: ${action}`
+    );
+
+    this.save();
+    return { updatedCount };
+  }
+
+  bulkImportVendors(vendorsList, user = 'Super Admin', cityId = 'VIJ') {
+    if (!Array.isArray(vendorsList) || vendorsList.length === 0) {
+      throw new Error('No valid vendors found to import.');
+    }
+
+    const targetCityId = (cityId || 'VIJ').toUpperCase();
+    const createdList = [];
+    vendorsList.forEach((row, i) => {
+      const name = (row.name || row.vendorName || '').trim();
+      if (!name) return;
+
+      const stallNoRaw = (row.stallNo || row.stall || `Stall ${i + 1}`).toString().trim();
+      const stallNo = stallNoRaw.toLowerCase().includes('stall') ? stallNoRaw : `Stall ${stallNoRaw}`;
+      const code = (row.code || name.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()).trim();
+      const id = `v_${code}_${Date.now().toString().slice(-4)}_${i}`;
+
+      const vendor = {
+        id,
+        cityId: targetCityId,
+        eventId: 'HPD-' + targetCityId + '-OCT2026',
+        stallNo,
+        name,
+        code,
+        category: row.category || 'Retail',
+        webkulSellerId: `WK-${code}`,
+        commissionPct: Number(row.commissionPct ?? 15.0),
+        phone: row.phone || '',
+        upiId: row.upiId || '',
+        bankDetails: row.bankDetails || '',
+        active: true,
+        createdAt: new Date().toISOString()
+      };
+
+      this.data.vendors.push(vendor);
+      createdList.push(vendor);
+    });
+
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Super Admin'),
+      'VENDORS_BULK_IMPORT',
+      'vendors',
+      'bulk_import',
+      'all',
+      null,
+      `Imported ${createdList.length} vendors for ${targetCityId}`,
+      'Excel/CSV bulk import',
+      targetCityId
+    );
+
+    this.save();
+    return createdList;
+  }
+
+  // City Management Methods
+  getCities() {
+    return this.data.cities || defaultCities;
+  }
+
+  getCityById(id) {
+    if (!id) return null;
+    const clean = id.toUpperCase();
+    return (this.data.cities || defaultCities).find(c => c.id.toUpperCase() === clean || c.code.toUpperCase() === clean) || null;
+  }
+
+  addCity(cityData, user = 'Super Admin') {
+    const name = (cityData.name || '').trim();
+    if (!name) throw new Error('City name is required.');
+    const code = (cityData.id || cityData.code || name.slice(0, 3)).trim().toUpperCase();
+    if ((this.data.cities || []).some(c => c.id === code || c.code === code)) {
+      throw new Error(`City with code "${code}" already exists.`);
+    }
+    const newCity = {
+      id: code,
+      code,
+      name,
+      eventName: cityData.eventName || `Half Price Days ${name} Expo`,
+      venue: cityData.venue || `${name} Exhibition Centre`,
+      dates: cityData.dates || 'Upcoming',
+      defaultCommissionPct: Number(cityData.defaultCommissionPct ?? 15.0),
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+    if (!this.data.cities) this.data.cities = [...defaultCities];
+    this.data.cities.push(newCity);
+    this.logAudit(
+      typeof user === 'string' ? user : (user.name || 'Super Admin'),
+      'CITY_ADDED',
+      'cities',
+      newCity.id,
+      'all',
+      null,
+      `${newCity.name} (${newCity.code})`,
+      'New city added to HalfPe Event Network',
+      newCity.id
+    );
+    this.save();
+    return newCity;
+  }
+
   getUsers() {
     return this.data.users || [];
   }
@@ -1338,5 +1559,8 @@ class Store {
 }
 
 const storeInstance = new Store();
+Store.prototype.formatBillCopy = formatBillCopy;
+storeInstance.formatBillCopy = formatBillCopy;
 storeInstance.ALL_SCOPES = ALL_SCOPES;
 module.exports = storeInstance;
+module.exports.formatBillCopy = formatBillCopy;

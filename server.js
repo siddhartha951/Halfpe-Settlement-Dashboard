@@ -112,6 +112,11 @@ const superAdminKrishna = {
 
 let currentUser = (store.data && store.data.users && store.data.users.find(u => u.role === 'super_admin')) || superAdminKrishna;
 
+function getRequestCity(req) {
+  const c = req.headers['x-city-id'] || req.query.cityId || req.query.city || (req.body && (req.body.cityId || req.body.city)) || 'VIJ';
+  return String(c).trim().toUpperCase();
+}
+
 function getRequestUser(req) {
   const headerUserId = req.headers['x-user-id'] || (req.body && req.body.adminUserId);
   const headerUserEmail = req.headers['x-user-email'] || (req.body && req.body.adminUserEmail);
@@ -354,9 +359,9 @@ app.post('/api/auth/switch', (req, res) => {
 });
 
 // -------------------------------------------------------------
-// Real-Time Live Sync Engine (SSE - Server-Sent Events)
+// Real-Time Live Sync Engine (SSE - Server-Sent Events with City Isolation)
 // -------------------------------------------------------------
-const sseClients = new Set();
+const sseClients = new Map(); // cityId -> Set of client objects
 
 app.get('/api/events/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -365,34 +370,44 @@ app.get('/api/events/stream', (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
+  const cityId = getRequestCity(req);
   const clientId = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-  const client = { id: clientId, res, user: req.user };
-  sseClients.add(client);
+  const client = { id: clientId, cityId, res, user: req.user };
 
-  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, timestamp: new Date().toISOString() })}\n\n`);
+  if (!sseClients.has(cityId)) {
+    sseClients.set(cityId, new Set());
+  }
+  sseClients.get(cityId).add(client);
+
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, cityId, timestamp: new Date().toISOString() })}\n\n`);
 
   const heartbeat = setInterval(() => {
     try {
       res.write(`:heartbeat ${Date.now()}\n\n`);
     } catch (e) {
       clearInterval(heartbeat);
-      sseClients.delete(client);
+      if (sseClients.has(cityId)) sseClients.get(cityId).delete(client);
     }
   }, 20000);
 
   req.on('close', () => {
     clearInterval(heartbeat);
-    sseClients.delete(client);
+    if (sseClients.has(cityId)) sseClients.get(cityId).delete(client);
   });
 });
 
-function broadcastEvent(type, payload = {}) {
-  const msg = JSON.stringify({ type, payload, timestamp: new Date().toISOString() });
-  for (const client of sseClients) {
-    try {
-      client.res.write(`data: ${msg}\n\n`);
-    } catch (e) {
-      sseClients.delete(client);
+function broadcastEvent(type, payload = {}, cityId = 'VIJ') {
+  const targetCity = String(cityId || 'VIJ').toUpperCase();
+  const msg = JSON.stringify({ type, cityId: targetCity, payload, timestamp: new Date().toISOString() });
+  
+  const citySet = sseClients.get(targetCity);
+  if (citySet) {
+    for (const client of citySet) {
+      try {
+        client.res.write(`data: ${msg}\n\n`);
+      } catch (e) {
+        citySet.delete(client);
+      }
     }
   }
 }
@@ -417,8 +432,30 @@ function checkDayLock(req, res, next) {
 // -------------------------------------------------------------
 // 2. Vendors List & Detail (Supports Custom Date Range & Role Isolation)
 // -------------------------------------------------------------
+
+// -------------------------------------------------------------
+// Multi-City Management API (BUG-17 & BUG-19)
+// -------------------------------------------------------------
+app.get('/api/cities', (req, res) => {
+  res.json({ cities: store.getCities() });
+});
+
+app.post('/api/cities', (req, res) => {
+  try {
+    const actor = req.user || getRequestUser(req);
+    if (actor.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only Super Admin can add a new city' });
+    }
+    const newCity = store.addCity(req.body, actor);
+    res.status(201).json({ success: true, city: newCity });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.get('/api/vendors', (req, res) => {
   const actor = req.user || getRequestUser(req);
+  const cityId = getRequestCity(req);
   const { startDate, endDate, includeInactive } = req.query;
   const dateCheck = validateDateRange(startDate, endDate);
   if (!dateCheck.valid) {
@@ -427,7 +464,7 @@ app.get('/api/vendors', (req, res) => {
 
   // Vendor role data isolation
   if (actor && actor.role === 'vendor' && actor.vendorId) {
-    const single = store.getVendorSummary(actor.vendorId, { startDate, endDate });
+    const single = store.getVendorSummary(actor.vendorId, { cityId, startDate, endDate });
     return res.json({
       vendors: single ? [single] : [],
       eventTotals: single ? {
@@ -448,9 +485,8 @@ app.get('/api/vendors', (req, res) => {
     });
   }
 
-  const data = store.getAllVendorsSummary({ startDate, endDate });
+  const data = store.getAllVendorsSummary({ cityId, startDate, endDate });
   
-  // By default, filter out soft-deactivated vendors unless includeInactive=true
   if (includeInactive !== 'true' && data.vendors) {
     data.vendors = data.vendors.filter(v => v.vendor.active !== false);
   }
@@ -685,15 +721,57 @@ app.post('/api/vendors/bulk-import', (req, res) => {
 // Record Internal Order from POS / Payment Page (DOES NOT create Shopify order automatically)
 app.post('/api/orders/record', (req, res) => {
   try {
+    const body = req.body || {};
+    const cityId = getRequestCity(req);
+    const custName = (body.customer?.name || '').trim();
+    const custPhone = String(body.customer?.phone || '').replace(/\D/g, '');
+    const items = Array.isArray(body.items) ? body.items : [];
+    const paymentMethod = (body.payment?.method || '').trim();
+    const billNo = (body.billNo || body.bill_number || '').trim();
+
+    // BUG-24: All fields on the payment page must be mandatory
+    const validationErrors = [];
+    if (!custName || custName.length < 2) {
+      validationErrors.push('Customer name is required (minimum 2 characters).');
+    }
+    if (!custPhone || custPhone.length !== 10) {
+      validationErrors.push('Enter a valid 10-digit mobile number.');
+    }
+    if (!billNo) {
+      validationErrors.push('HalfPe bill copy number is required.');
+    }
+    if (items.length === 0) {
+      validationErrors.push('Add at least one item.');
+    } else {
+      items.forEach((it, idx) => {
+        if (!it.title && !it.name) validationErrors.push(`Item #${idx + 1} name is required.`);
+        if (Number(it.quantity || it.qty || 0) < 1) validationErrors.push(`Item #${idx + 1} quantity must be at least 1.`);
+        if (Number(it.eventPrice || it.price || it.amount || 0) <= 0) validationErrors.push(`Item #${idx + 1} amount must be greater than zero.`);
+      });
+    }
+    if (!paymentMethod) {
+      validationErrors.push('Select a payment method (Cash, Razorpay, or Pinelabs).');
+    }
+
+    if (validationErrors.length > 0) {
+      return res.status(422).json({
+        success: false,
+        errors: validationErrors,
+        message: validationErrors.join(' | ')
+      });
+    }
+
+    body.cityId = cityId;
     const activeUser = getRequestUser(req);
-    const result = store.recordInternalOrder(req.body, activeUser);
+    const result = store.recordInternalOrder(body, activeUser);
+    
     if (!result.isDuplicate) {
       broadcastEvent('ORDER_RECORDED', { 
         orderId: result.order.id, 
         billNo: result.order.billNo,
         vendorId: result.order.vendorId,
         grossAmount: result.order.totals?.grossAmount || 0
-      });
+      }, cityId);
     }
     res.status(result.isDuplicate ? 200 : 201).json({
       success: true,
@@ -713,16 +791,15 @@ app.post('/api/orders/record', (req, res) => {
 app.get('/api/orders', (req, res) => {
   try {
     const actor = req.user || getRequestUser(req);
-    const filters = { ...req.query };
+    const cityId = getRequestCity(req);
+    const filters = { ...req.query, cityId };
 
-    // Strict Vendor Isolation: vendor user only sees their own orders
     if (actor && actor.role === 'vendor' && actor.vendorId) {
       filters.vendorId = actor.vendorId;
     }
 
     const orders = store.getInternalOrders(filters);
 
-    // Mask phone numbers if viewer or billing staff
     const activeRole = (actor && actor.role) || 'super_admin';
     const maskedOrders = orders.map(o => {
       let phone = o.customer?.phone || '';
@@ -944,6 +1021,153 @@ app.post('/api/orders/simulate', (req, res) => {
 // -------------------------------------------------------------
 // 3. Bill Rows (Orders Table CRUD with Audit & Constraints)
 // -------------------------------------------------------------
+
+// -------------------------------------------------------------
+// Consolidated Universal Export API (BUG-23)
+// -------------------------------------------------------------
+app.get('/api/export/:dataset', (req, res) => {
+  try {
+    const actor = req.user || getRequestUser(req);
+    const { dataset } = req.params;
+    const format = (req.query.format || 'csv').toLowerCase();
+    const cityId = getRequestCity(req);
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+    const vendorId = req.query.vendorId;
+
+    if (!['csv', 'xlsx', 'pdf'].includes(format)) {
+      return res.status(400).json({ error: 'Format must be csv, xlsx, or pdf' });
+    }
+
+    let rows = [];
+    const filename = `${dataset}_${cityId}_${new Date().toISOString().slice(0, 10)}`;
+
+    if (dataset === 'settlement' || dataset === 'overall') {
+      const summary = store.getAllVendorsSummary({ cityId, startDate, endDate });
+      rows = (summary.vendors || []).map(v => ({
+        'Vendor Name': v.vendor.name,
+        'Stall No': v.vendor.stallNo,
+        'Orders Count': v.ordersCount,
+        'Gross Sales (₹)': v.grossSales,
+        'Returns (₹)': v.returnsAmount,
+        'Net Sales (₹)': v.netSales,
+        'Commission (%)': v.commissionPct,
+        'Commission Amount (₹)': v.commissionAmount,
+        'Settlement Payable (₹)': v.settlementPayable,
+        'Already Paid (₹)': v.alreadyPaid,
+        'Balance Due (₹)': v.balanceToPay,
+        'Status': v.status
+      }));
+    } else if (dataset === 'vendor-wise') {
+      let bills = store.data.billRows.filter(b => (b.cityId || 'VIJ').toUpperCase() === cityId);
+      if (vendorId && vendorId !== 'all') bills = bills.filter(b => b.vendorId === vendorId);
+      bills = store.filterByDateRange(bills, 'createdAt', startDate, endDate);
+
+      rows = bills.map(b => {
+        const vendor = store.getVendorById(b.vendorId);
+        const commPct = vendor ? Number(vendor.commissionPct || 15) : 15;
+        const gross = Number(b.billAmount || 0);
+        const commAmt = Math.round((gross * (commPct / 100)) * 100) / 100;
+        const payable = Math.round(Math.max(0, gross - commAmt) * 100) / 100;
+        return {
+          'Bill Copy No': b.billCopyNo ? String(b.billCopyNo).replace(/^[^0-9]+/, '') : b.id,
+          'Stall': b.stallNo || (vendor ? vendor.stallNo : '-'),
+          'Vendor': vendor ? vendor.name : b.vendorId,
+          'Gross Sale (₹)': gross,
+          'Commission (%)': commPct,
+          'Commission (₹)': commAmt,
+          'Net Settlement (₹)': payable,
+          'Payment Mode': b.paymentMode || 'Cash',
+          'Status': b.status || 'Pending Approval',
+          'Date (IST)': b.createdAt
+        };
+      });
+    } else if (dataset === 'orders') {
+      let orders = store.getInternalOrders({ cityId, vendorId, startDate, endDate });
+      rows = orders.map(o => ({
+        'Bill Copy No': o.billNo ? String(o.billNo).replace(/^[^0-9]+/, '') : o.id,
+        'Customer': o.customer?.name || 'Walk-in',
+        'Mobile': o.customer?.phone || '',
+        'Vendor': o.vendorName,
+        'Stall': o.stallNo,
+        'Gross Sale (₹)': o.totals?.grossAmount || 0,
+        'Net Payable (₹)': o.totals?.totalPayable || o.totalPayable || 0,
+        'Payment Mode': o.payment?.method || 'Cash',
+        'Approval Status': o.status,
+        'Shopify Status': o.shopifySyncStatus || 'NOT_PUSHED',
+        'Date': o.createdAt
+      }));
+    } else if (dataset === 'vendors') {
+      let vendors = store.getVendors({ cityId, includeInactive: true });
+      rows = vendors.map(v => ({
+        'Stall No': v.stallNo,
+        'Vendor Name': v.name,
+        'Code': v.code,
+        'Category': v.category || 'Retail',
+        'Commission (%)': v.commissionPct || 15,
+        'Status': v.active !== false ? 'Active' : 'Deactivated',
+        'Phone': v.phone || '',
+        'UPI ID': v.upiId || ''
+      }));
+    } else if (dataset === 'payouts') {
+      let payouts = (store.data.payouts || []).filter(p => (p.cityId || 'VIJ').toUpperCase() === cityId);
+      payouts = store.filterByDateRange(payouts, 'date', startDate, endDate);
+      rows = payouts.map(p => ({
+        'Payout ID': p.id,
+        'Vendor': p.vendorName || p.vendorId,
+        'Amount (₹)': p.amount,
+        'Payment Mode': p.paymentMode || 'Bank Transfer',
+        'Reference / UTR': p.referenceUtr || p.referenceNumber || '',
+        'Date': p.date,
+        'Disbursed By': p.adminUser || 'Admin'
+      }));
+    } else if (dataset === 'audit-log') {
+      let logs = store.getAuditLogs({ cityId });
+      rows = logs.map(l => ({
+        'Timestamp': l.timestamp,
+        'Staff / User': l.user,
+        'Action': l.action,
+        'Entity': l.entity,
+        'Entity ID': l.entityId,
+        'Field': l.field,
+        'Old Value': l.oldValue,
+        'New Value': l.newValue,
+        'Reason': l.reason
+      }));
+    } else if (dataset === 'team') {
+      let users = store.getUsers();
+      rows = users.map(u => ({
+        'Name': u.name,
+        'Email': u.email,
+        'Designation': u.designation,
+        'Role': u.role,
+        'Active': u.active !== false ? 'Yes' : 'No'
+      }));
+    } else {
+      return res.status(400).json({ error: `Unknown dataset: ${dataset}` });
+    }
+
+    if (rows.length === 0) {
+      rows = [{ 'Notice': `No records found for ${dataset} in ${cityId}` }];
+    }
+
+    const headers = Object.keys(rows[0]);
+    const csvContent = '\uFEFF' + [
+      headers.join(','),
+      ...rows.map(r => headers.map(h => {
+        let val = String(r[h] ?? '').replace(/"/g, '""');
+        return `"${val}"`;
+      }).join(','))
+    ].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.${format === 'xlsx' ? 'csv' : format}"`);
+    return res.send(csvContent);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/bills', (req, res) => {
   const actor = req.user || getRequestUser(req);
   const { vendorId, paymentMode, source, status, search, mismatchOnly, startDate, endDate } = req.query;
@@ -1379,7 +1603,10 @@ app.get('/api/shopify/status', (req, res) => {
   });
 });
 
-app.post('/api/shopify/sync', async (req, res) => {
+app.post('/api/shopify/sync', (_req, res) => {
+  return res.status(410).json({ error: 'Shopify sync button has been removed' });
+});
+app.post('/api/shopify/sync-legacy', async (req, res) => {
   const { startDate, endDate, tag } = req.body;
   const createdAtMin = startDate ? `${startDate}T00:00:00+05:30` : '2026-10-06T00:00:00+05:30';
   const createdAtMax = endDate ? `${endDate}T23:59:59+05:30` : undefined;

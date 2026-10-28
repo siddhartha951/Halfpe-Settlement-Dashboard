@@ -107,10 +107,6 @@
       <button class="btn btn-outline btn-sm desktop-only" id="btnSimulateWebhook" style="display: none;" onclick="openWebhookSimulator()">
         ⚡ Simulate Webhook
       </button>
-
-      <button class="btn btn-primary btn-sm desktop-only" id="btnShopifySync" onclick="triggerShopifySync()">
-        <span id="syncIcon">🔄</span> <span id="syncText">Sync Shopify</span>
-      </button>
     </div>
   </header>
 
@@ -172,9 +168,6 @@
     <!-- Drawer Quick Actions -->
     <div class="drawer-actions-section">
       <div class="drawer-nav-title">ACTIONS</div>
-      <button class="btn btn-primary btn-block" onclick="triggerShopifySync(); toggleMobileDrawer(false);">
-        🔄 Sync Shopify Live
-      </button>
       <button class="btn btn-outline btn-block" style="margin-top: 8px;"
         onclick="openWebhookSimulator(); toggleMobileDrawer(false);">
         ⚡ Simulate Webhook
@@ -242,6 +235,66 @@
       <button class="nav-tab" id="tabTeam" onclick="switchMainTab('team')">
         👥 Team & Access
       </button>
+
+      <!-- Consolidated Universal Export Menu (BUG-23) -->
+      <div class="nav-export-wrap" id="navExportDropdownWrap" style="position: relative; margin-left: auto;">
+        <button type="button" class="nav-tab nav-tab-export" id="btnExportMenu" onclick="toggleExportDropdown(event)" aria-haspopup="true" aria-expanded="false" style="font-weight: 600; display: flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--notion-hairline); border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer;">
+          <span>📥 Export ▾</span>
+        </button>
+        <div class="export-dropdown-menu" id="exportDropdownMenu" style="display: none;">
+          <div class="export-dropdown-header">Export City Datasets</div>
+          <div class="export-dropdown-item">
+            <span class="export-item-label">📊 Overall Settlement</span>
+            <div class="export-item-actions">
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('settlement', 'xlsx')">Excel</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('settlement', 'csv')">CSV</button>
+            </div>
+          </div>
+          <div class="export-dropdown-item">
+            <span class="export-item-label">🏢 Vendor-wise Settlement</span>
+            <div class="export-item-actions">
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('vendor-wise', 'xlsx')">Excel</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('vendor-wise', 'csv')">CSV</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('vendor-wise', 'pdf')">PDF</button>
+            </div>
+          </div>
+          <div class="export-dropdown-item">
+            <span class="export-item-label">📦 Orders Management</span>
+            <div class="export-item-actions">
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('orders', 'xlsx')">Excel</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('orders', 'csv')">CSV</button>
+            </div>
+          </div>
+          <div class="export-dropdown-item">
+            <span class="export-item-label">🏬 Vendors Directory</span>
+            <div class="export-item-actions">
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('vendors', 'xlsx')">Excel</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('vendors', 'csv')">CSV</button>
+            </div>
+          </div>
+          <div class="export-dropdown-item">
+            <span class="export-item-label">💸 Payouts Ledger</span>
+            <div class="export-item-actions">
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('payouts', 'xlsx')">Excel</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('payouts', 'csv')">CSV</button>
+            </div>
+          </div>
+          <div class="export-dropdown-item">
+            <span class="export-item-label">📜 Audit Log</span>
+            <div class="export-item-actions">
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('audit-log', 'xlsx')">Excel</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('audit-log', 'csv')">CSV</button>
+            </div>
+          </div>
+          <div class="export-dropdown-item">
+            <span class="export-item-label">👥 Team &amp; Access</span>
+            <div class="export-item-actions">
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('team', 'xlsx')">Excel</button>
+              <button class="btn btn-xs btn-outline" onclick="triggerUniversalExport('team', 'csv')">CSV</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </nav>
 
