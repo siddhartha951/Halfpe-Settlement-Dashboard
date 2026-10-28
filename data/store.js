@@ -523,16 +523,18 @@ class Store {
     let calculatedGross = 0;
     let calculatedCommission = 0;
 
+    const cityVendors = (this.data.vendors || []).filter(item => normalizeCityCode(item.cityId) === targetCityId);
+
     if (rawStallGroups.length > 0) {
       rawStallGroups.forEach((sg, idx) => {
         let v = null;
-        if (sg.vendorId) v = this.data.vendors.find(item => item.id === sg.vendorId);
+        if (sg.vendorId) v = cityVendors.find(item => item.id === sg.vendorId);
         if (!v && sg.stallNo) {
           const clean = String(sg.stallNo).replace(/\D/g, '');
-          v = this.data.vendors.find(item => item.stallNo.replace(/\D/g, '') === clean);
+          v = cityVendors.find(item => item.stallNo.replace(/\D/g, '') === clean);
         }
         if (!v && sg.vendorName) {
-          v = this.data.vendors.find(item => item.name.toLowerCase() === sg.vendorName.toLowerCase());
+          v = cityVendors.find(item => item.name.toLowerCase() === sg.vendorName.toLowerCase());
         }
 
         const vId = v ? v.id : (sg.vendorId || `v_stall_${sg.stallNo || idx}`);
@@ -564,13 +566,13 @@ class Store {
     // Fallback for single-stall direct order if stallGroups was empty
     if (vendorAllocations.length === 0) {
       let v = null;
-      if (orderData.vendorId) v = this.data.vendors.find(item => item.id === orderData.vendorId);
+      if (orderData.vendorId) v = cityVendors.find(item => item.id === orderData.vendorId);
       if (!v && orderData.stallNo) {
         const clean = String(orderData.stallNo).replace(/\D/g, '');
-        v = this.data.vendors.find(item => item.stallNo.replace(/\D/g, '') === clean);
+        v = cityVendors.find(item => item.stallNo.replace(/\D/g, '') === clean);
       }
       if (!v && orderData.vendorName) {
-        v = this.data.vendors.find(item => item.name.toLowerCase() === orderData.vendorName.toLowerCase());
+        v = cityVendors.find(item => item.name.toLowerCase() === orderData.vendorName.toLowerCase());
       }
       const vId = v ? v.id : (orderData.vendorId || 'v_unknown');
       const vName = v ? v.name : (orderData.vendorName || 'Unassigned Vendor');
@@ -1190,7 +1192,7 @@ class Store {
     const name = (vendorData.name || '').trim();
     if (!name) throw new Error('Vendor name is required.');
 
-    const targetCityId = (vendorData.cityId || 'VIJ').toUpperCase();
+    const targetCityId = normalizeCityCode(vendorData.cityId);
     const stallNo = (vendorData.stallNo || 'Stall TBD').trim();
     const code = (vendorData.code || name.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase()).trim();
     const id = vendorData.id || `v_${code}_${Date.now().toString().slice(-4)}`;

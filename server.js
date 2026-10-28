@@ -566,8 +566,8 @@ app.post('/api/vendors', (req, res) => {
     return res.status(403).json({ error: 'Unauthorized: Only Super Admin can add vendors.' });
   }
   try {
-    const newVendor = store.addVendor(req.body, actor);
-    broadcastEvent('VENDOR_ADDED', { vendor: newVendor });
+    const newVendor = store.addVendor({ ...req.body, cityId: getRequestCity(req) }, actor);
+    broadcastEvent('VENDOR_ADDED', { vendor: newVendor }, newVendor.cityId);
     res.status(201).json({ success: true, vendor: newVendor });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -581,7 +581,7 @@ app.put('/api/vendors/:id', (req, res) => {
   }
   try {
     const updated = store.updateVendor(req.params.id, req.body, actor);
-    broadcastEvent('VENDOR_UPDATED', { vendor: updated });
+    broadcastEvent('VENDOR_UPDATED', { vendor: updated }, updated.cityId);
     res.json({ success: true, vendor: updated });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -596,7 +596,7 @@ app.post('/api/vendors/:id/toggle-status', (req, res) => {
   try {
     const { active } = req.body;
     const vendor = store.toggleVendorStatus(req.params.id, active, actor);
-    broadcastEvent('VENDOR_STATUS_CHANGED', { vendor });
+    broadcastEvent('VENDOR_STATUS_CHANGED', { vendor }, vendor.cityId);
     res.json({ success: true, vendor });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -627,7 +627,7 @@ app.patch('/api/vendors/:id/commission', (req, res) => {
     reason || 'Commission rate updated by Super Admin'
   );
   store.save();
-  broadcastEvent('VENDOR_COMMISSION_UPDATED', { vendor });
+  broadcastEvent('VENDOR_COMMISSION_UPDATED', { vendor }, vendor.cityId);
 
   res.json({ success: true, vendor, summary: store.getVendorSummary(id) });
 });
@@ -666,7 +666,7 @@ app.post('/api/vendors/bulk-action', (req, res) => {
   });
 
   store.save();
-  broadcastEvent('VENDORS_BULK_UPDATED', { action, count: updatedCount });
+  broadcastEvent('VENDORS_BULK_UPDATED', { action, count: updatedCount }, getRequestCity(req));
   res.json({ success: true, updatedCount });
 });
 
@@ -682,15 +682,16 @@ app.post('/api/vendors/bulk-import', (req, res) => {
     return res.status(400).json({ error: 'vendors array is required.' });
   }
 
+  const cityId = getRequestCity(req);
   const createdList = [];
   vendors.forEach(vData => {
     if (!vData.name && !vData.stallNo) return;
     try {
       // Check if vendor with same stallNo or code already exists
-      const existing = store.data.vendors.find(v => 
+      const existing = store.data.vendors.find(v => (v.cityId || 'VIJ').toUpperCase() === cityId && ( 
         (vData.stallNo && v.stallNo.toLowerCase() === String(vData.stallNo).trim().toLowerCase()) ||
         (vData.code && v.code.toLowerCase() === String(vData.code).trim().toLowerCase())
-      );
+      ));
 
       if (existing) {
         // Update existing vendor
@@ -711,7 +712,8 @@ app.post('/api/vendors/bulk-import', (req, res) => {
           category: vData.category || 'Retail',
           commissionPct: vData.commissionPct !== undefined ? parseFloat(vData.commissionPct) : 15,
           phone: vData.phone || '',
-          upiId: vData.upiId || ''
+          upiId: vData.upiId || '',
+          cityId
         }, actor);
         createdList.push(added);
       }
@@ -721,7 +723,7 @@ app.post('/api/vendors/bulk-import', (req, res) => {
   });
 
   store.save();
-  broadcastEvent('VENDORS_BULK_IMPORTED', { count: createdList.length });
+  broadcastEvent('VENDORS_BULK_IMPORTED', { count: createdList.length }, cityId);
   res.json({ success: true, count: createdList.length, vendors: createdList });
 });
 
@@ -1185,7 +1187,8 @@ app.get('/api/bills', (req, res) => {
   if (!dateCheck.valid) {
     return res.status(400).json({ error: dateCheck.error });
   }
-  let list = [...store.data.billRows];
+  const cityId = getRequestCity(req);
+  let list = store.data.billRows.filter(r => (r.cityId || 'VIJ').toUpperCase() === cityId);
 
   list = store.filterByDateRange(list, 'createdAt', startDate, endDate);
 
@@ -1462,7 +1465,8 @@ app.get('/api/payouts', (req, res) => {
   try {
     const actor = req.user || getRequestUser(req);
     const { startDate, endDate, vendorId } = req.query;
-    let payouts = [...(store.data.payouts || [])];
+    const cityId = getRequestCity(req);
+    let payouts = (store.data.payouts || []).filter(p => (p.cityId || 'VIJ').toUpperCase() === cityId);
 
     if (vendorId) {
       payouts = payouts.filter(p => p.vendorId === vendorId);
@@ -1786,7 +1790,8 @@ app.get('/api/reports/exceptions.csv', (req, res) => {
 });
 
 app.get('/api/reports/daily-payment-modes', (req, res) => {
-  const nonVoid = store.data.billRows.filter(r => !r.isVoid && r.isApproved !== false);
+  const cityId = getRequestCity(req);
+  const nonVoid = store.data.billRows.filter(r => !r.isVoid && r.isApproved !== false && (r.cityId || 'VIJ').toUpperCase() === cityId);
   const summary = nonVoid.reduce((acc, r) => {
     const day = r.createdAt.split('T')[0];
     if (!acc[day]) {
@@ -1807,7 +1812,7 @@ app.get('/api/reports/daily-payment-modes', (req, res) => {
 });
 
 app.get('/api/audit-logs', (req, res) => {
-  res.json(store.data.auditLog);
+  res.json(store.getAuditLogs({ cityId: getRequestCity(req) }));
 });
 
 // Single Page Fallback

@@ -170,6 +170,28 @@ function initCitySelector() {
 
   updateCityHeaderDisplay();
   renderCityDropdown();
+  loadCitiesFromServer();
+}
+
+async function loadCitiesFromServer() {
+  try {
+    const res = await fetch('/api/cities');
+    const data = await res.json();
+    if (!data || !Array.isArray(data.cities) || data.cities.length === 0) return;
+    state.cities = data.cities.map(c => ({
+      id: normalizeCityCode(c.code || c.id),
+      code: normalizeCityCode(c.code || c.id),
+      name: c.name,
+      venue: c.venue || '',
+      dates: c.dates || '',
+      commissionPct: c.defaultCommissionPct ?? c.commissionPct ?? 15
+    }));
+    try { localStorage.setItem('hp_saved_cities', JSON.stringify(state.cities)); } catch (e) {}
+    updateCityHeaderDisplay();
+    renderCityDropdown();
+  } catch (e) {
+    console.warn('[Cities] Could not load cities from server:', e.message);
+  }
 }
 
 function updateCityHeaderDisplay() {
@@ -224,6 +246,7 @@ function switchCity(cityId) {
 
   // Clear data cache on city switch (BUG-17)
   state.vendorsData = null;
+  if (typeof setupLiveSync === 'function') setupLiveSync();
   state.selectedVendorId = null;
   state.selectedGlobalVendor = 'all';
 
@@ -306,7 +329,7 @@ function openAddCityModal() {
   container.classList.remove('hidden');
 }
 
-function submitAddCity(e) {
+async function submitAddCity(e) {
   e.preventDefault();
   const name = document.getElementById('newCityName').value.trim();
   const venue = document.getElementById('newCityVenue').value.trim();
@@ -318,15 +341,24 @@ function submitAddCity(e) {
     return;
   }
 
-  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `city_${Date.now()}`;
-  const newCity = { id, name, venue, dates, commissionPct: comm };
-
-  state.cities.push(newCity);
-  try { localStorage.setItem('hp_saved_cities', JSON.stringify(state.cities)); } catch (err) {}
-
-  closeModal();
-  switchCity(id);
-  toast(`✓ Created and switched to ${name}!`, 'success');
+  try {
+    const res = await fetch('/api/cities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, venue, dates, defaultCommissionPct: comm })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      toast(`Failed to add city: ${data.error || res.status}`, 'error');
+      return;
+    }
+    await loadCitiesFromServer();
+    closeModal();
+    switchCity(data.city.code);
+    toast(`✓ Created and switched to ${name}!`, 'success');
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
 }
 
 // -------------------------------------------------------------
@@ -345,7 +377,7 @@ function setupLiveSync() {
   }
 
   try {
-    liveSyncSource = new EventSource('/api/events/stream');
+    liveSyncSource = new EventSource('/api/events/stream?cityId=' + encodeURIComponent(normalizeCityCode(state.currentCityId)));
 
     const updatePill = (connected) => {
       const dot = document.getElementById('liveSyncDot');
@@ -376,6 +408,7 @@ function setupLiveSync() {
       try {
         const data = JSON.parse(e.data);
         if (data.type === 'CONNECTED' || data.type === 'HEARTBEAT') return;
+        if (data.cityId && normalizeCityCode(data.cityId) !== normalizeCityCode(state.currentCityId)) return;
 
         console.log('[Live Sync] Received real-time update:', data.type, data.payload);
 
@@ -865,6 +898,9 @@ async function exportTeamAccessCSV() {
 // Initialization
 // -------------------------------------------------------------
 async function init() {
+  // 0. Restore the selected city first: every request below sends it in x-city-id
+  initCitySelector();
+
   // 1. Restore persistent user session if available (Enable multiple sessions across tabs/browsers)
   try {
     const saved = localStorage.getItem('hp_session_user');
@@ -893,17 +929,15 @@ async function init() {
   // 5. Load initial data with URL hash route restoration
   // Requirement: "When page is refreshed it should stay in the consolidated page"
   if (state.currentUser) {
-    await loadVendorsSummary();
     const restored = syncRouteFromHash();
+    // Default to Consolidated Overall Settlement page on fresh load or refresh
+    if (!restored || window.location.hash === '' || window.location.hash === '#overall') {
+      state.activeTab = 'overall';
+      state.selectedVendorId = null;
+    }
+    await loadVendorsSummary();
     if (restored && state.selectedVendorId) {
       await loadVendorDetail(state.selectedVendorId);
-    } else {
-      // Default to Consolidated Overall Settlement page on fresh load or refresh
-      if (!restored || window.location.hash === '' || window.location.hash === '#overall') {
-        state.activeTab = 'overall';
-        state.selectedVendorId = null;
-      }
-      renderMain();
     }
   } else {
     renderMain();
@@ -947,9 +981,6 @@ async function init() {
     toEl.min = state.startDate;
     toEl.value = state.endDate;
   }
-
-  // 9. Initialize City Selector & Header (A2)
-  initCitySelector();
 
   // Close city dropdown on outside click
   document.addEventListener('click', (e) => {
