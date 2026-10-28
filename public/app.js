@@ -245,16 +245,50 @@ function renderCityDropdown() {
   const list = document.getElementById('cityDropdownList');
   if (!list) return;
 
-  list.innerHTML = state.cities.map(c => `
+  list.innerHTML = state.cities.map(c => {
+    const billingUrl = getCityBillingUrl(c.code || c.id);
+    return `
     <div class="city-item ${c.id === state.currentCityId ? 'active' : ''}" onclick="switchCity('${c.id}')">
-      <div>
+      <div style="min-width: 0;">
         <div class="city-item-title">${escapeHtml(c.name)}</div>
         <div class="city-item-sub">${escapeHtml(c.venue)} · ${escapeHtml(c.dates)}</div>
+        <div class="city-item-url">
+          <a href="${escapeHtml(billingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open billing page for ${escapeHtml(c.name)}">🔗 ${escapeHtml(billingUrl.replace(/^https:\/\//, ''))}</a>
+          <button type="button" class="city-item-copy" onclick="event.stopPropagation(); copyTextToClipboard('${escapeHtml(billingUrl)}', '✓ Billing URL copied!')">Copy</button>
+        </div>
       </div>
       ${c.id === state.currentCityId ? '<span class="city-item-check">✓ Active</span>' : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
+
+// Public billing page on halfpe.com — the page reads ?city=<code> to load that city's stalls
+const BILLING_PAGE_URL = 'https://halfpe.com/pages/payment-page-for-vijaywada-event';
+
+function getCityBillingUrl(code) {
+  return `${BILLING_PAGE_URL}?city=${encodeURIComponent(code)}`;
+}
+
+// Mirrors store.addCity(): code = first 3 letters of the name, uppercased
+function previewCityCode(name) {
+  return String(name || '').slice(0, 3).trim().toUpperCase();
+}
+
+function updateNewCityUrlPreview() {
+  const box = document.getElementById('newCityUrlPreview');
+  if (!box) return;
+  const code = previewCityCode(document.getElementById('newCityName').value);
+  if (!code) {
+    box.innerHTML = '<span style="color: var(--notion-secondary);">City name daalte hi yahan billing URL dikhega</span>';
+    return;
+  }
+  const taken = state.cities.some(c => normalizeCityCode(c.code || c.id) === normalizeCityCode(code));
+  box.innerHTML = taken
+    ? `<span style="color: #c62828;">⚠️ Code <b>${escapeHtml(code)}</b> pehle se kisi city ka hai. Naam ke pehle 3 letters badlo.</span>`
+    : `City code: <b>${escapeHtml(code)}</b><br><code style="word-break: break-all;">${escapeHtml(getCityBillingUrl(code))}</code>`;
+}
+window.updateNewCityUrlPreview = updateNewCityUrlPreview;
 
 function switchCity(cityId) {
   const normId = normalizeCityCode(cityId);
@@ -312,7 +346,14 @@ function openAddCityModal() {
           <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">
             City / Event Title *
           </label>
-          <input type="text" id="newCityName" class="form-input" placeholder="e.g. Chennai Expo or Pune Retail Expo" required style="width: 100%; height: 36px;">
+          <input type="text" id="newCityName" class="form-input" placeholder="e.g. Chennai Expo or Pune Retail Expo" required oninput="updateNewCityUrlPreview()" style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">
+            Billing Page URL (billing staff ko ye link dena hai)
+          </label>
+          <div id="newCityUrlPreview" style="font-size: 0.8rem; padding: 8px 10px; background: var(--notion-surface-warm); border: 1px solid var(--notion-hairline); border-radius: var(--radius-sm);"></div>
         </div>
 
         <div style="margin-bottom: 14px;">
@@ -345,6 +386,7 @@ function openAddCityModal() {
     </div>
   `;
   container.classList.remove('hidden');
+  updateNewCityUrlPreview();
 }
 
 async function submitAddCity(e) {
@@ -373,7 +415,7 @@ async function submitAddCity(e) {
     await loadCitiesFromServer();
     closeModal();
     switchCity(data.city.code);
-    toast(`✓ Created and switched to ${name}!`, 'success');
+    toast(`✓ Created and switched to ${name}! Billing URL: ${getCityBillingUrl(data.city.code)}`, 'success');
   } catch (err) {
     toast('Error: ' + err.message, 'error');
   }
@@ -6925,26 +6967,26 @@ async function toggleUserActiveStatus(userId, currentActive) {
   }
 }
 
-function copyTextToClipboard(text) {
+function copyTextToClipboard(text, successMsg = '✓ Credentials copied to clipboard!') {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(() => {
-      toast('✓ Credentials copied to clipboard!', 'success');
+      toast(successMsg, 'success');
     }).catch(() => {
-      fallbackCopy(text);
+      fallbackCopy(text, successMsg);
     });
   } else {
-    fallbackCopy(text);
+    fallbackCopy(text, successMsg);
   }
 }
 
-function fallbackCopy(text) {
+function fallbackCopy(text, successMsg = '✓ Credentials copied to clipboard!') {
   const ta = document.createElement('textarea');
   ta.value = text;
   document.body.appendChild(ta);
   ta.select();
   try {
     document.execCommand('copy');
-    toast('✓ Credentials copied to clipboard!', 'success');
+    toast(successMsg, 'success');
   } catch (e) {
     toast('Failed to auto-copy. Please copy manually.', 'error');
   }
