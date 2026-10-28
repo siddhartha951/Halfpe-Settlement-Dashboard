@@ -110,7 +110,28 @@ const superAdminKrishna = {
   active: true
 };
 
-let currentUser = (store.data && store.data.users && store.data.users.find(u => u.role === 'super_admin')) || superAdminKrishna;
+const crypto = require('crypto');
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const hashToken = token => crypto.createHash('sha256').update(String(token)).digest('hex');
+
+// Sessions are stored (hashed) with the rest of the data so a deploy doesn't log everyone out
+function createSession(user) {
+  const token = crypto.randomBytes(32).toString('hex');
+  if (!store.data.sessions) store.data.sessions = {};
+  const now = Date.now();
+  for (const [k, s] of Object.entries(store.data.sessions)) if (s.expiresAt < now) delete store.data.sessions[k];
+  store.data.sessions[hashToken(token)] = { userId: user.id, createdAt: now, expiresAt: now + SESSION_TTL_MS };
+  store.save();
+  return token;
+}
+
+function getRequestToken(req) {
+  const auth = req.headers.authorization || '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  // EventSource can't send headers, so the live-sync stream passes the token in the query
+  if (req.path === '/api/events/stream' && req.query.token) return String(req.query.token);
+  return null;
+}
 
 function normalizeCityCode(raw) {
   if (!raw) return 'VIJ';
@@ -128,27 +149,29 @@ function getRequestCity(req) {
 }
 
 function getRequestUser(req) {
-  const headerUserId = req.headers['x-user-id'] || (req.body && req.body.adminUserId);
-  const headerUserEmail = req.headers['x-user-email'] || (req.body && req.body.adminUserEmail);
-
-  if (headerUserId) {
-    const u = store.getUserById(headerUserId);
-    if (u && u.active !== false) return u;
-  }
-  if (headerUserEmail) {
-    const u = store.getUserByEmail(headerUserEmail);
-    if (u && u.active !== false) return u;
-  }
-  if (currentUser && currentUser.active !== false) {
-    return currentUser;
-  }
-  return store.getUserById('usr_1') || superAdminKrishna;
+  const token = getRequestToken(req);
+  if (!token) return null;
+  const session = store.data.sessions && store.data.sessions[hashToken(token)];
+  if (!session || session.expiresAt < Date.now()) return null;
+  const u = store.getUserById(session.userId);
+  return u && u.active !== false ? u : null;
 }
 
-// Attach active user to every request
+// Endpoints the public billing page and webhooks call without a login
+const PUBLIC_API = new Set([
+  'POST /api/auth/login',
+  'GET /api/cities',
+  'GET /api/vendors',
+  'POST /api/orders/record',
+  'POST /api/webhooks/shopify-order',
+]);
+
+// Every other API call needs a valid session
 app.use((req, res, next) => {
   req.user = getRequestUser(req);
-  next();
+  if (!req.path.startsWith('/api/') || req.user || req.method === 'OPTIONS') return next();
+  if (PUBLIC_API.has(`${req.method} ${req.path}`)) return next();
+  return res.status(401).json({ error: 'Please log in again.' });
 });
 
 // Secure account metadata endpoint - reads active users from store dynamically
@@ -187,10 +210,6 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(403).json({ error: 'Your account has been suspended. Please contact Krishna (Super Admin).' });
   }
 
-  if (user.role === 'super_admin' || user.id === 'usr_1' || user.email === 'admin@halfpe.com') {
-    currentUser = user;
-  }
-
   res.json({
     success: true,
     user: {
@@ -202,19 +221,23 @@ app.post('/api/auth/login', (req, res) => {
       vendorId: user.vendorId || null,
       scopes: user.scopes || []
     },
-    token: Buffer.from(`${user.id}:${Date.now()}`).toString('base64'),
+    token: createSession(user),
     message: `Welcome back, ${user.name}!`
   });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  currentUser = store.getUserById('usr_1') || superAdminKrishna;
+  const token = getRequestToken(req);
+  if (token && store.data.sessions) {
+    delete store.data.sessions[hashToken(token)];
+    store.save();
+  }
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
 app.get('/api/auth/users', (req, res) => {
   res.json({
-    currentUser: getRequestUser(req),
+    currentUser: req.user,
     users: store.getUsers().map(u => ({
       id: u.id,
       name: u.name,
@@ -350,13 +373,16 @@ app.post('/api/users/:id/toggle-status', (req, res) => {
 });
 
 app.post('/api/auth/switch', (req, res) => {
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only Super Admin can switch accounts.' });
+  }
   const { userId } = req.body;
   const user = store.getUserById(userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.active === false) return res.status(403).json({ error: 'Account is suspended' });
-  currentUser = user;
   res.json({
     success: true,
+    token: createSession(user),
     currentUser: {
       id: user.id,
       name: user.name,
@@ -464,8 +490,16 @@ app.post('/api/cities', (req, res) => {
 });
 
 app.get('/api/vendors', (req, res) => {
-  const actor = req.user || getRequestUser(req);
+  const actor = req.user;
   const cityId = getRequestCity(req);
+
+  // Public billing page: only the stall list, no sales or settlement figures
+  if (!actor) {
+    const stalls = store.getVendors({ cityId }).map(v => ({
+      vendor: { id: v.id, cityId: v.cityId, stallNo: v.stallNo, name: v.name, code: v.code, category: v.category, active: v.active !== false }
+    }));
+    return res.json({ vendors: stalls });
+  }
   const { startDate, endDate, includeInactive } = req.query;
   const dateCheck = validateDateRange(startDate, endDate);
   if (!dateCheck.valid) {
@@ -774,8 +808,7 @@ app.post('/api/orders/record', (req, res) => {
     }
 
     body.cityId = cityId;
-    const activeUser = getRequestUser(req);
-    const result = store.recordInternalOrder(body, activeUser);
+    const result = store.recordInternalOrder(body, req.user || 'POS Billing Terminal');
     
     if (!result.isDuplicate) {
       broadcastEvent('ORDER_RECORDED', { 
@@ -1018,7 +1051,7 @@ app.post('/api/orders/simulate', (req, res) => {
     },
     terminal: 'POS-01',
     source: 'POS Billing Terminal'
-  }, currentUser.name || 'Super Admin Simulation');
+  }, req.user.name || 'Super Admin Simulation');
 
   broadcastEvent('ORDER_RECORDED', { 
     orderId: result.order.id, 
@@ -1562,7 +1595,7 @@ app.get('/api/day-locks', (req, res) => {
 });
 
 app.post('/api/day-locks/toggle', (req, res) => {
-  const actor = req.user || currentUser;
+  const actor = req.user;
   const { date, lock, reason } = req.body;
   if (!date) return res.status(400).json({ error: 'Date is required.' });
 

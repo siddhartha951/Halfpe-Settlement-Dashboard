@@ -35,31 +35,49 @@ window.fetch = function(url, options) {
   options = options || {};
   options.headers = options.headers || {};
   
-  let activeUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
-  if (!activeUser) {
-    try {
-      const saved = localStorage.getItem('hp_session_user');
-      if (saved) activeUser = JSON.parse(saved);
-    } catch (e) {}
-  }
-  if (!activeUser) {
-    activeUser = { id: 'usr_1', email: 'admin@halfpe.com', role: 'super_admin' };
-  }
+  const sessionToken = getSessionToken();
 
   const activeCityId = (typeof state !== 'undefined' && state.currentCityId) ? normalizeCityCode(state.currentCityId) : 'VIJ';
   if (options.headers instanceof Headers) {
     if (!options.headers.has('x-city-id')) options.headers.set('x-city-id', activeCityId);
-    if (!options.headers.has('x-user-id')) options.headers.set('x-user-id', activeUser.id);
-    if (!options.headers.has('x-user-email')) options.headers.set('x-user-email', activeUser.email || '');
-    if (!options.headers.has('x-user-role')) options.headers.set('x-user-role', activeUser.role || '');
+    if (sessionToken && !options.headers.has('Authorization')) options.headers.set('Authorization', 'Bearer ' + sessionToken);
   } else {
     if (!options.headers['x-city-id']) options.headers['x-city-id'] = activeCityId;
-    if (!options.headers['x-user-id']) options.headers['x-user-id'] = activeUser.id;
-    if (!options.headers['x-user-email']) options.headers['x-user-email'] = activeUser.email || '';
-    if (!options.headers['x-user-role']) options.headers['x-user-role'] = activeUser.role || '';
+    if (sessionToken && !options.headers['Authorization']) options.headers['Authorization'] = 'Bearer ' + sessionToken;
   }
-  return _nativeFetch.call(this, url, options);
+  return _nativeFetch.call(this, url, options).then(res => {
+    // Session expired or revoked: go back to the login screen
+    if (res.status === 401 && sessionToken && !String(url).includes('/api/auth/login')) clearSession(true);
+    return res;
+  });
 };
+
+function getSessionToken() {
+  try { return localStorage.getItem('hp_session_token'); } catch (e) { return null; }
+}
+
+function saveSession(user, token) {
+  try {
+    localStorage.setItem('hp_session_user', JSON.stringify(user));
+    if (token) localStorage.setItem('hp_session_token', token);
+  } catch (e) {}
+}
+
+function clearSession(expired) {
+  const hadUser = typeof state !== 'undefined' && state.currentUser;
+  try {
+    localStorage.removeItem('hp_session_user');
+    localStorage.removeItem('hp_session_token');
+  } catch (e) {}
+  if (typeof state === 'undefined') return;
+  state.currentUser = null;
+  state.selectedVendorId = null;
+  state.vendorsData = null;
+  if (expired && hadUser) {
+    if (typeof toast === 'function') toast('Session expired. Please log in again.', 'error');
+    if (typeof renderMain === 'function') renderMain();
+  }
+}
 
 const DEFAULT_USER = {
   id: 'usr_1',
@@ -377,7 +395,7 @@ function setupLiveSync() {
   }
 
   try {
-    liveSyncSource = new EventSource('/api/events/stream?cityId=' + encodeURIComponent(normalizeCityCode(state.currentCityId)));
+    liveSyncSource = new EventSource('/api/events/stream?cityId=' + encodeURIComponent(normalizeCityCode(state.currentCityId)) + '&token=' + encodeURIComponent(getSessionToken() || ''));
 
     const updatePill = (connected) => {
       const dot = document.getElementById('liveSyncDot');
@@ -904,16 +922,10 @@ async function init() {
   // 1. Restore persistent user session if available (Enable multiple sessions across tabs/browsers)
   try {
     const saved = localStorage.getItem('hp_session_user');
-    if (saved) {
-      state.currentUser = JSON.parse(saved);
-    } else {
-      // Default auto-login to Super Admin so any new tab or fresh window is seamlessly authenticated
-      state.currentUser = DEFAULT_USER;
-      try { localStorage.setItem('hp_session_user', JSON.stringify(DEFAULT_USER)); } catch (e) {}
-    }
+    state.currentUser = (saved && getSessionToken()) ? JSON.parse(saved) : null;
   } catch (e) {
     console.warn('Could not read saved session:', e);
-    state.currentUser = DEFAULT_USER;
+    state.currentUser = null;
   }
 
   // 2. Setup real-time live sync
@@ -1389,9 +1401,8 @@ async function switchUserRole(userId) {
     const data = await res.json();
     if (data.success) {
       state.currentUser = data.currentUser;
-      try {
-        localStorage.setItem('hp_session_user', JSON.stringify(data.currentUser));
-      } catch (e) {}
+      saveSession(data.currentUser, data.token);
+      setupLiveSync();
       updateUserChipUI();
       toast(`Switched role to: ${state.currentUser.name}`, 'info');
       if (state.selectedVendorId) {
@@ -1545,13 +1556,9 @@ async function logout() {
   try {
     await fetch('/api/auth/logout', { method: 'POST' });
   } catch (e) {}
-  state.currentUser = null;
-  state.selectedVendorId = null;
-  state.vendorsData = null;
+  clearSession(false);
   state.selectedVendorData = null;
-  try {
-    localStorage.removeItem('hp_session_user');
-  } catch (e) {}
+  if (liveSyncSource) { try { liveSyncSource.close(); } catch (e) {} }
   closeModal();
   updateUserChipUI();
   toast('Signed out successfully.', 'info');
@@ -1579,9 +1586,9 @@ async function executeLogin(email, password) {
     }
 
     state.currentUser = data.user;
-    try {
-      localStorage.setItem('hp_session_user', JSON.stringify(data.user));
-    } catch (e) {}
+    saveSession(data.user, data.token);
+    setupLiveSync();
+    await fetchUsers();
 
     updateUserChipUI();
     renderRoleSwitcher();
