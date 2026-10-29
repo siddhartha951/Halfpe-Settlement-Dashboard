@@ -489,6 +489,43 @@ app.post('/api/cities', (req, res) => {
   }
 });
 
+app.put('/api/cities/:id', (req, res) => {
+  const actor = req.user;
+  if (actor.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only Super Admin can edit a city' });
+  }
+  try {
+    const { name, venue, dates, defaultCommissionPct } = req.body || {};
+    const city = store.updateCity(req.params.id, { name, venue, dates, defaultCommissionPct }, actor);
+    broadcastEvent('CITY_UPDATED', { city }, city.id);
+    res.json({ success: true, city });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/cities/:id', (req, res) => {
+  const actor = req.user;
+  if (actor.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only Super Admin can delete a city' });
+  }
+  try {
+    const result = store.deleteCity(req.params.id, actor);
+    broadcastEvent('CITY_DELETED', { cityId: result.city.id, mode: result.mode }, result.city.id);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Lets the dashboard warn the super admin when data would be wiped by the next deploy
+app.get('/api/system/storage', (req, res) => {
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only Super Admin can view storage status' });
+  }
+  res.json({ persistent: store.getStorageStatus().persistent });
+});
+
 app.get('/api/vendors', (req, res) => {
   const actor = req.user;
   const cityId = getRequestCity(req);

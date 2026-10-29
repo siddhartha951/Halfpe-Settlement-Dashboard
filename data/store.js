@@ -3,11 +3,18 @@ const path = require('path');
 const ShopifyClient = require('./shopify-client');
 
 const BUNDLED_DB_PATH = path.join(__dirname, 'database.json');
-const DB_PATH = process.env.DATA_DIR ? path.join(process.env.DATA_DIR, 'database.json') : BUNDLED_DB_PATH;
+// Railway sets RAILWAY_VOLUME_MOUNT_PATH once a volume is attached, so a forgotten DATA_DIR no longer drops data on redeploy
+const DATA_DIR = process.env.DATA_DIR || process.env.RAILWAY_VOLUME_MOUNT_PATH || '';
+const DB_PATH = DATA_DIR ? path.join(DATA_DIR, 'database.json') : BUNDLED_DB_PATH;
 const SEED_PATH = path.join(__dirname, 'database.seed.json');
+const IS_PERSISTENT = DB_PATH !== BUNDLED_DB_PATH;
+
+if (!IS_PERSISTENT && (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT)) {
+  console.error('[Store] ⚠️  NO PERSISTENT VOLUME: the database lives inside the container, so every vendor, city and order change is LOST on the next deploy. Attach a Railway volume (or set DATA_DIR to its mount path).');
+}
 
 // First boot on an empty volume: copy the snapshot shipped with the code once. An existing file is never overwritten.
-if (DB_PATH !== BUNDLED_DB_PATH && !fs.existsSync(DB_PATH)) {
+if (IS_PERSISTENT && !fs.existsSync(DB_PATH)) {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   if (fs.existsSync(BUNDLED_DB_PATH)) {
     fs.copyFileSync(BUNDLED_DB_PATH, DB_PATH);
@@ -1398,9 +1405,14 @@ class Store {
     return createdList;
   }
 
+  getStorageStatus() {
+    return { persistent: IS_PERSISTENT, dbPath: DB_PATH };
+  }
+
   // City Management Methods
-  getCities() {
-    return this.data.cities || defaultCities;
+  getCities(options = {}) {
+    const all = this.data.cities || defaultCities;
+    return options.includeArchived ? all : all.filter(c => !c.archived);
   }
 
   getCityById(id) {
@@ -1413,8 +1425,11 @@ class Store {
     const name = (cityData.name || '').trim();
     if (!name) throw new Error('City name is required.');
     const code = (cityData.id || cityData.code || name.slice(0, 3)).trim().toUpperCase();
-    if ((this.data.cities || []).some(c => c.id === code || c.code === code)) {
-      throw new Error(`City with code "${code}" already exists.`);
+    const clash = (this.data.cities || []).find(c => c.id === code || c.code === code);
+    if (clash) {
+      throw new Error(clash.archived
+        ? `City code "${code}" belongs to the deleted city "${clash.name}", whose records are kept. Use a different name.`
+        : `City with code "${code}" already exists.`);
     }
     const newCity = {
       id: code,
@@ -1442,6 +1457,82 @@ class Store {
     );
     this.save();
     return newCity;
+  }
+
+  // The code is not editable: billing URLs (?city=CODE) and every vendor/order point at it
+  updateCity(id, updates = {}, user = 'Super Admin') {
+    const city = this.getCityById(id);
+    if (!city || city.archived) throw new Error('City not found.');
+    if (!this.data.cities) this.data.cities = [...defaultCities];
+    const actor = typeof user === 'string' ? user : (user.name || 'Super Admin');
+
+    const changes = {};
+    ['name', 'venue', 'dates'].forEach(field => {
+      if (updates[field] === undefined) return;
+      const value = String(updates[field]).trim();
+      if (!value) throw new Error(`City ${field} cannot be empty.`);
+      if (value !== city[field]) changes[field] = value;
+    });
+    if (updates.defaultCommissionPct !== undefined) {
+      const pct = Number(updates.defaultCommissionPct);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) throw new Error('Commission must be between 0 and 100.');
+      if (pct !== city.defaultCommissionPct) changes.defaultCommissionPct = pct;
+    }
+
+    Object.entries(changes).forEach(([field, value]) => {
+      this.logAudit(actor, 'CITY_UPDATED', 'cities', city.id, field, city[field], value, 'City details edited', city.id);
+      city[field] = value;
+    });
+    if (Object.keys(changes).length > 0) {
+      city.updatedAt = new Date().toISOString();
+      this.save();
+    }
+    return city;
+  }
+
+  countCityRecords(id) {
+    const code = String(id).toUpperCase();
+    const inCity = r => (r.cityId || 'VIJ').toUpperCase() === code;
+    return {
+      vendors: (this.data.vendors || []).filter(inCity).length,
+      orders: (this.data.internalOrders || []).filter(inCity).length,
+      bills: (this.data.billRows || []).filter(inCity).length,
+      returns: (this.data.returns || []).filter(inCity).length,
+      payouts: (this.data.payouts || []).filter(inCity).length
+    };
+  }
+
+  // A city with no records is removed outright. A city with vendors, orders or money movements is
+  // archived instead: hidden everywhere, but its financial records stay intact for settlement and audit.
+  deleteCity(id, user = 'Super Admin') {
+    const city = this.getCityById(id);
+    if (!city || city.archived) throw new Error('City not found.');
+    if (this.getCities().length <= 1) throw new Error('Cannot delete the last remaining city.');
+    if (!this.data.cities) this.data.cities = [...defaultCities];
+    const actor = typeof user === 'string' ? user : (user.name || 'Super Admin');
+
+    const counts = this.countCityRecords(city.id);
+    const hasRecords = Object.values(counts).some(n => n > 0);
+    if (hasRecords) {
+      city.archived = true;
+      city.isActive = false;
+      city.archivedAt = new Date().toISOString();
+    } else {
+      this.data.cities = this.data.cities.filter(c => c !== city);
+    }
+    this.logAudit(
+      actor,
+      hasRecords ? 'CITY_ARCHIVED' : 'CITY_DELETED',
+      'cities',
+      city.id,
+      'all',
+      `${city.name} (${city.code})`,
+      null,
+      hasRecords ? `City removed from dashboard; records kept: ${JSON.stringify(counts)}` : 'Empty city deleted',
+      city.id
+    );
+    this.save();
+    return { city, mode: hasRecords ? 'archived' : 'deleted', counts };
   }
 
   getUsers() {

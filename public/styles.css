@@ -288,6 +288,10 @@ body {
   background: var(--notion-surface-warm);
 }
 
+.city-item-delete {
+  color: #c62828;
+}
+
 .city-item-check {
   flex-shrink: 0;
   margin-left: 10px;

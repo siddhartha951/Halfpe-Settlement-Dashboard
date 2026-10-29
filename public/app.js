@@ -245,8 +245,16 @@ function renderCityDropdown() {
   const list = document.getElementById('cityDropdownList');
   if (!list) return;
 
+  // City add / edit / delete is Super Admin only
+  const canManageCities = getUserRole() === 'super_admin';
+  const footer = document.getElementById('cityDropdownFooter');
+  if (footer) footer.style.display = canManageCities ? '' : 'none';
+
   list.innerHTML = state.cities.map(c => {
     const billingUrl = getCityBillingUrl(c.code || c.id);
+    const adminActions = canManageCities ? `
+          <button type="button" class="city-item-copy" onclick="event.stopPropagation(); openEditCityModal('${c.id}')" title="Edit ${escapeHtml(c.name)}">✏️ Edit</button>
+          <button type="button" class="city-item-copy city-item-delete" onclick="event.stopPropagation(); deleteCity('${c.id}')" title="Delete ${escapeHtml(c.name)}">🗑 Delete</button>` : '';
     return `
     <div class="city-item ${c.id === state.currentCityId ? 'active' : ''}" onclick="switchCity('${c.id}')">
       <div style="min-width: 0;">
@@ -256,6 +264,7 @@ function renderCityDropdown() {
           <a href="${escapeHtml(billingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open billing page for ${escapeHtml(c.name)}">🔗 ${escapeHtml(billingUrl.replace(/^https:\/\//, ''))}</a>
           <button type="button" class="city-item-copy" onclick="event.stopPropagation(); copyTextToClipboard('${escapeHtml(billingUrl)}', '✓ Billing URL copied!')">Copy</button>
         </div>
+        ${adminActions ? `<div class="city-item-url">${adminActions}</div>` : ''}
       </div>
       ${c.id === state.currentCityId ? '<span class="city-item-check">✓ Active</span>' : ''}
     </div>
@@ -419,6 +428,139 @@ async function submitAddCity(e) {
   } catch (err) {
     toast('Error: ' + err.message, 'error');
   }
+}
+
+function openEditCityModal(cityId) {
+  const container = document.getElementById('modalContainer');
+  const city = state.cities.find(c => c.id === normalizeCityCode(cityId));
+  if (!container || !city) return;
+  toggleCityDropdown(false);
+
+  container.innerHTML = `
+    <div class="modal-dialog" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>✏️</span> <span>Edit City — ${escapeHtml(city.code)}</span>
+        </h3>
+        <button type="button" class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+
+      <form onsubmit="submitEditCity(event, '${city.id}')" style="padding: 20px;">
+        <p style="font-size: 0.85rem; color: var(--notion-secondary); margin-top: 0; margin-bottom: 16px;">
+          City code <b>${escapeHtml(city.code)}</b> stays the same so the billing URL and all vendors/orders keep working.
+        </p>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">City / Event Title *</label>
+          <input type="text" id="editCityName" class="form-input" value="${escapeHtml(city.name)}" required style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">Venue Address *</label>
+          <input type="text" id="editCityVenue" class="form-input" value="${escapeHtml(city.venue)}" required style="width: 100%; height: 36px;">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 12px; margin-bottom: 18px;">
+          <div>
+            <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">Event Dates *</label>
+            <input type="text" id="editCityDates" class="form-input" value="${escapeHtml(city.dates)}" required style="width: 100%; height: 36px;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.82rem; font-weight: 600; margin-bottom: 6px;">Commission %</label>
+            <input type="number" id="editCityCommission" class="form-input" value="${escapeHtml(String(city.commissionPct ?? 15))}" min="0" max="100" step="0.01" style="width: 100%; height: 36px;">
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+          <button type="button" class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  `;
+  container.classList.remove('hidden');
+}
+
+async function submitEditCity(e, cityId) {
+  e.preventDefault();
+  const body = {
+    name: document.getElementById('editCityName').value.trim(),
+    venue: document.getElementById('editCityVenue').value.trim(),
+    dates: document.getElementById('editCityDates').value.trim(),
+    defaultCommissionPct: parseFloat(document.getElementById('editCityCommission').value)
+  };
+  if (!body.name || !body.venue || !body.dates) {
+    toast('Please fill in all required city fields', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/cities/' + encodeURIComponent(cityId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      toast(`Failed to update city: ${data.error || res.status}`, 'error');
+      return;
+    }
+    await loadCitiesFromServer();
+    closeModal();
+    toast(`✓ ${data.city.name} updated`, 'success');
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function deleteCity(cityId) {
+  const city = state.cities.find(c => c.id === normalizeCityCode(cityId));
+  if (!city) return;
+  if (state.cities.length <= 1) {
+    toast('Cannot delete the last remaining city', 'error');
+    return;
+  }
+  const ok = confirm(
+    `Delete "${city.name}" (${city.code})?\n\n` +
+    `• If this city has no vendors or orders, it is removed permanently.\n` +
+    `• If it has vendors, orders, bills or payouts, it is removed from the dashboard and billing page, but those records are KEPT for settlement and audit.`
+  );
+  if (!ok) return;
+
+  try {
+    const res = await fetch('/api/cities/' + encodeURIComponent(city.id), { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      toast(`Failed to delete city: ${data.error || res.status}`, 'error');
+      return;
+    }
+    await loadCitiesFromServer();
+    if (normalizeCityCode(state.currentCityId) === city.id) {
+      switchCity(state.cities[0].id);
+    } else {
+      renderCityDropdown();
+    }
+    toast(data.mode === 'archived'
+      ? `✓ ${city.name} removed. Its ${data.counts.vendors} vendors and ${data.counts.orders} orders are kept in records.`
+      : `✓ ${city.name} deleted`, 'success');
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+// Super Admin gets a loud warning if the server is not on a persistent volume (data would vanish on redeploy)
+let storageStatusChecked = false;
+async function checkStorageStatus() {
+  if (storageStatusChecked || getUserRole() !== 'super_admin') return;
+  storageStatusChecked = true;
+  try {
+    const res = await fetch('/api/system/storage');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.persistent === false) {
+      toast('⚠️ Server storage is NOT persistent — new vendors/cities will be lost on the next deploy. Attach a Railway volume.', 'error');
+    }
+  } catch (e) {}
 }
 
 // -------------------------------------------------------------
@@ -1134,6 +1276,9 @@ async function init() {
   window.switchCity = switchCity;
   window.openAddCityModal = openAddCityModal;
   window.submitAddCity = submitAddCity;
+  window.openEditCityModal = openEditCityModal;
+  window.submitEditCity = submitEditCity;
+  window.deleteCity = deleteCity;
 }
 
 function updateUserChipUI() {
@@ -1162,6 +1307,8 @@ function updateUserChipUI() {
 
     if (drawerAvatar) drawerAvatar.textContent = initial;
     if (drawerName) drawerName.textContent = u.name;
+    renderCityDropdown();
+    checkStorageStatus();
     if (drawerRole) drawerRole.textContent = roleClean;
     if (drawerAuthBtn) drawerAuthBtn.textContent = 'Log Out';
     if (bNavAccountLabel) bNavAccountLabel.textContent = u.name.split(' ')[0];
