@@ -158,7 +158,10 @@ class Store {
         (parsed.billRows || []).forEach(b => { if (!b.cityId) b.cityId = 'VIJ'; });
         (parsed.internalOrders || []).forEach(o => { if (!o.cityId) o.cityId = 'VIJ'; });
         (parsed.returns || []).forEach(r => { if (!r.cityId) r.cityId = 'VIJ'; });
-        (parsed.payouts || []).forEach(p => { if (!p.cityId) p.cityId = 'VIJ'; });
+        // Payouts belong to their vendor's city. Older payouts were saved without one and got stamped VIJ,
+        // which hid non-Vijayawada payouts from Payout Management, so always take it from the vendor.
+        const vendorCity = new Map((parsed.vendors || []).map(v => [v.id, v.cityId]));
+        (parsed.payouts || []).forEach(p => { p.cityId = vendorCity.get(p.vendorId) || p.cityId || 'VIJ'; });
         (parsed.auditLog || []).forEach(a => { if (!a.cityId) a.cityId = 'VIJ'; });
 
         return parsed;
@@ -943,7 +946,9 @@ class Store {
     const results = [];
     const internalOrders = (this.data.internalOrders || []).filter(o => (o.cityId || 'VIJ').toUpperCase() === targetCityId);
     
-    internalOrders.forEach(o => {
+    // Only approved orders count toward the vendor's settlement balance, so only they can be paid out.
+    // Paying pending or rejected orders is what drove vendor balances negative.
+    internalOrders.filter(o => o.status === 'APPROVED').forEach(o => {
       const cleanBill = formatBillCopy(o.billNo);
       if (o.vendorId === vendorId) {
         if (o.outstandingBalance > 0.01) {
@@ -1010,6 +1015,7 @@ class Store {
       (r.cityId || 'VIJ').toUpperCase() === targetCityId &&
       r.vendorId === vendorId && 
       !r.isVoid && 
+      r.isApproved !== false && 
       !allInternalIds.has(r.internalOrderId) && 
       !allInternalIds.has(r.id) &&
       !allInternalBillNos.has(r.billCopyNo)
@@ -1075,41 +1081,92 @@ class Store {
     const payoutDate = date || new Date().toISOString();
     const adminName = typeof adminUser === 'string' ? adminUser : (adminUser?.name || 'Super Admin');
 
-    // Process each allocation
-    const processedAllocations = [];
+    const round2 = n => Math.round(n * 100) / 100;
+    const inCity = r => (r.cityId || 'VIJ').toUpperCase() === targetCityId;
+
+    // Never let a payout push the vendor's balance below zero (returns can shrink it after bills were raised)
+    const summary = this.getVendorSummary(vendorId, { cityId: targetCityId });
+    if (summary && totalAmount > summary.balanceToPay + 0.01) {
+      throw new Error(`Payout ₹${totalAmount} exceeds ${vendor.name}'s outstanding balance ₹${Math.max(0, summary.balanceToPay)}.`);
+    }
+
+    // Pass 1: resolve and validate every allocation before touching any record, so a bad line
+    // cannot leave earlier bills half-paid in memory
+    const plan = [];
+    const pending = new Map(); // amount already planned against the same bill in this payout
     for (const alloc of normalizedAllocations) {
       const allocAmt = Number(alloc.amount);
-      if (allocAmt <= 0) continue;
+      if (!(allocAmt > 0)) continue;
 
-      let matchedInternal = (this.data.internalOrders || []).find(o => o.id === alloc.orderId || o.billNo === alloc.billNo);
-      if (matchedInternal) {
-        // If order has vendorAllocations, update the specific vendor allocation
-        if (Array.isArray(matchedInternal.vendorAllocations)) {
-          const allocMatch = matchedInternal.vendorAllocations.find(a => a.vendorId === vendorId);
-          if (allocMatch) {
-            const allocPayable = allocMatch.netPayable || Math.round((allocMatch.amount * (1 - (allocMatch.commissionPct / 100))) * 100) / 100;
-            const currentPaid = allocMatch.amountPaid || 0;
-            const allocBal = Math.round(Math.max(0, allocPayable - currentPaid) * 100) / 100;
-            if (allocAmt > allocBal + 0.01) {
-              throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${allocBal} for Bill #${matchedInternal.billNo}`);
-            }
-            allocMatch.amountPaid = Math.round((currentPaid + allocAmt) * 100) / 100;
-            allocMatch.outstandingBalance = Math.round(Math.max(0, allocPayable - allocMatch.amountPaid) * 100) / 100;
-            allocMatch.payoutStatus = allocMatch.outstandingBalance <= 0.01 ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+      const order = (this.data.internalOrders || []).find(o => inCity(o) && (o.id === alloc.orderId || o.billNo === alloc.billNo));
+      if (order) {
+        if (order.status !== 'APPROVED') {
+          throw new Error(`Bill #${order.billNo} is ${String(order.status || 'pending').replace(/_/g, ' ').toLowerCase()} and cannot be paid out until it is approved.`);
+        }
+        const vendorAlloc = Array.isArray(order.vendorAllocations) ? order.vendorAllocations.find(a => a.vendorId === vendorId) : null;
+        const ownsOrder = order.vendorId === vendorId;
+        if (!vendorAlloc && !ownsOrder) {
+          throw new Error(`Bill #${order.billNo} does not belong to ${vendor.name}.`);
+        }
+        const key = 'o:' + order.id;
+        const planned = (pending.get(key) || 0) + allocAmt;
+        if (vendorAlloc) {
+          const allocPayable = vendorAlloc.netPayable || round2(vendorAlloc.amount * (1 - (vendorAlloc.commissionPct / 100)));
+          const allocBal = round2(Math.max(0, allocPayable - (vendorAlloc.amountPaid || 0)));
+          if (planned > allocBal + 0.01) {
+            throw new Error(`Allocation ₹${planned} exceeds outstanding balance ₹${allocBal} for Bill #${order.billNo}`);
           }
         }
-
-        if (matchedInternal.vendorId === vendorId) {
-          if (allocAmt > matchedInternal.outstandingBalance + 0.01) {
-            throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${matchedInternal.outstandingBalance} for Bill #${matchedInternal.billNo}`);
-          }
-          matchedInternal.amountPaid = Math.round((matchedInternal.amountPaid + allocAmt) * 100) / 100;
-          matchedInternal.outstandingBalance = Math.round(Math.max(0, matchedInternal.totalPayable - matchedInternal.amountPaid) * 100) / 100;
-          matchedInternal.payoutStatus = (matchedInternal.outstandingBalance <= 0.01) ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+        if (ownsOrder && planned > order.outstandingBalance + 0.01) {
+          throw new Error(`Allocation ₹${planned} exceeds outstanding balance ₹${order.outstandingBalance} for Bill #${order.billNo}`);
         }
+        pending.set(key, planned);
+        plan.push({ kind: 'order', order, vendorAlloc, ownsOrder, allocAmt });
+        continue;
+      }
 
-        if (!matchedInternal.payoutAllocations) matchedInternal.payoutAllocations = [];
-        matchedInternal.payoutAllocations.push({
+      // Fallback for historical billRows
+      const bill = (this.data.billRows || []).find(r => inCity(r) && r.vendorId === vendorId && (r.id === alloc.orderId || r.billCopyNo === alloc.billNo));
+      if (!bill) {
+        throw new Error(`Order #${alloc.orderId || alloc.billNo} not found for allocation.`);
+      }
+      if (bill.isVoid || bill.isApproved === false) {
+        throw new Error(`Bill #${bill.billCopyNo} is void or not approved and cannot be paid out.`);
+      }
+      const commPct = Number(vendor.commissionPct ?? 15);
+      const payable = round2(Number(bill.billAmount || 0) * (1 - (commPct / 100)));
+      const balance = round2(Math.max(0, payable - Number(bill.amountPaid || 0)));
+      const key = 'b:' + bill.id;
+      const planned = (pending.get(key) || 0) + allocAmt;
+      if (planned > balance + 0.01) {
+        throw new Error(`Allocation ₹${planned} exceeds outstanding balance ₹${balance} for Bill #${bill.billCopyNo}`);
+      }
+      pending.set(key, planned);
+      plan.push({ kind: 'bill', bill, payable, allocAmt });
+    }
+    if (plan.length === 0) {
+      throw new Error('Payout must settle at least one bill.');
+    }
+
+    // Pass 2: apply
+    const processedAllocations = [];
+    for (const step of plan) {
+      const { allocAmt } = step;
+      if (step.kind === 'order') {
+        const { order, vendorAlloc, ownsOrder } = step;
+        if (vendorAlloc) {
+          const allocPayable = vendorAlloc.netPayable || round2(vendorAlloc.amount * (1 - (vendorAlloc.commissionPct / 100)));
+          vendorAlloc.amountPaid = round2((vendorAlloc.amountPaid || 0) + allocAmt);
+          vendorAlloc.outstandingBalance = round2(Math.max(0, allocPayable - vendorAlloc.amountPaid));
+          vendorAlloc.payoutStatus = vendorAlloc.outstandingBalance <= 0.01 ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+        }
+        if (ownsOrder) {
+          order.amountPaid = round2((order.amountPaid || 0) + allocAmt);
+          order.outstandingBalance = round2(Math.max(0, order.totalPayable - order.amountPaid));
+          order.payoutStatus = order.outstandingBalance <= 0.01 ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+        }
+        if (!order.payoutAllocations) order.payoutAllocations = [];
+        order.payoutAllocations.push({
           payoutId,
           amount: allocAmt,
           date: payoutDate,
@@ -1117,41 +1174,30 @@ class Store {
           recordedBy: adminName
         });
         processedAllocations.push({
-          orderId: matchedInternal.id,
-          billNo: matchedInternal.billNo,
+          orderId: order.id,
+          billNo: formatBillCopy((!ownsOrder && vendorAlloc.billBookNo) || order.billNo),
           amount: allocAmt,
-          remainingBalance: matchedInternal.outstandingBalance,
-          payoutStatus: matchedInternal.payoutStatus
+          remainingBalance: ownsOrder ? order.outstandingBalance : vendorAlloc.outstandingBalance,
+          payoutStatus: ownsOrder ? order.payoutStatus : vendorAlloc.payoutStatus
         });
       } else {
-        // Fallback for historical billRows
-        let matchedBill = (this.data.billRows || []).find(r => r.id === alloc.orderId || r.billCopyNo === alloc.billNo);
-        if (matchedBill) {
-          const commPct = Number(vendor.commissionPct ?? 15);
-          const payable = Math.round((Number(matchedBill.billAmount || 0) * (1 - (commPct / 100))) * 100) / 100;
-          const currentPaid = Number(matchedBill.amountPaid || 0);
-          const balance = Math.round(Math.max(0, payable - currentPaid) * 100) / 100;
-          if (allocAmt > balance + 0.01) {
-            throw new Error(`Allocation ₹${allocAmt} exceeds outstanding balance ₹${balance} for Bill #${matchedBill.billCopyNo}`);
-          }
-          matchedBill.amountPaid = Math.round((currentPaid + allocAmt) * 100) / 100;
-          matchedBill.outstandingBalance = Math.round(Math.max(0, payable - matchedBill.amountPaid) * 100) / 100;
-          matchedBill.payoutStatus = (matchedBill.outstandingBalance <= 0.01) ? 'FULLY_PAID' : 'PARTIALLY_PAID';
-          processedAllocations.push({
-            orderId: matchedBill.id,
-            billNo: matchedBill.billCopyNo,
-            amount: allocAmt,
-            remainingBalance: matchedBill.outstandingBalance,
-            payoutStatus: matchedBill.payoutStatus
-          });
-        } else {
-          throw new Error(`Order #${alloc.orderId || alloc.billNo} not found for allocation.`);
-        }
+        const { bill, payable } = step;
+        bill.amountPaid = round2(Number(bill.amountPaid || 0) + allocAmt);
+        bill.outstandingBalance = round2(Math.max(0, payable - bill.amountPaid));
+        bill.payoutStatus = bill.outstandingBalance <= 0.01 ? 'FULLY_PAID' : 'PARTIALLY_PAID';
+        processedAllocations.push({
+          orderId: bill.id,
+          billNo: bill.billCopyNo,
+          amount: allocAmt,
+          remainingBalance: bill.outstandingBalance,
+          payoutStatus: bill.payoutStatus
+        });
       }
     }
 
     const payoutRecord = {
       id: payoutId,
+      cityId: targetCityId,
       vendorId,
       vendorName: vendor.name,
       stallNo: vendor.stallNo,
@@ -1176,7 +1222,8 @@ class Store {
       'allocations',
       null,
       `₹${totalAmount} allocated across ${processedAllocations.length} order(s) for ${vendor.name}`,
-      notes || 'Order-linked payout settlement'
+      notes || 'Order-linked payout settlement',
+      targetCityId
     );
 
     this.save();

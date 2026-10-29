@@ -629,6 +629,7 @@ function setupLiveSync() {
           }
 
           if (state.selectedVendorId) {
+            refreshVendorsCache();
             await loadVendorDetail(state.selectedVendorId);
           } else if (state.activeTab === 'overall' || state.activeTab === 'vendors') {
             await loadVendorsSummary();
@@ -1851,6 +1852,11 @@ function switchMainTab(tab, updateHash = true) {
   }
 
   renderMain();
+  // The consolidated totals were rendered from a cache filled when the page loaded, so payouts, bills and
+  // returns recorded since then never showed up. Refresh them every time these tabs open.
+  if ((tab === 'overall' || tab === 'vendors') && state.currentUser) {
+    loadVendorsSummary();
+  }
 }
 
 function hasScope(scope) {
@@ -2253,6 +2259,17 @@ async function loadVendorsSummary() {
   } catch (err) {
     toast('Failed to load vendors data', 'error');
   }
+}
+
+// Refreshes the consolidated totals without re-rendering, so the next consolidated view is current
+async function refreshVendorsCache() {
+  try {
+    const params = new URLSearchParams();
+    if (state.startDate) params.append('startDate', state.startDate);
+    if (state.endDate) params.append('endDate', state.endDate);
+    const res = await fetch('/api/vendors' + (params.toString() ? '?' + params.toString() : ''));
+    if (res.ok) state.vendorsData = await res.json();
+  } catch (e) {}
 }
 
 function populateGlobalVendorDropdown() {
@@ -2752,9 +2769,9 @@ function renderVendorDetailView() {
         <button class="btn btn-outline btn-sm" onclick="openPrintableStatement('${v.id}')">
           🖨️ Printable Vendor Statement (PDF)
         </button>
-        ${(getUserRole() === 'super_admin' || getUserRole() === 'finance') ? `
-          <button class="btn btn-success btn-sm" onclick="openRecordPayoutModal('${v.id}')">
-            💳 Record Payout
+        ${hasScope('payout_management') ? `
+          <button class="btn btn-success btn-sm" onclick="switchMainTab('payout_mgmt')" title="Payouts are recorded against specific bills in Payout Management">
+            💸 Go to Payout Management
           </button>
         ` : ''}
         ${(getUserRole() === 'super_admin' || getUserRole() === 'billing_staff') ? `
@@ -3775,73 +3792,6 @@ async function submitReturn(e, billRowId, vendorId) {
     }
   } catch (err) {
     toast('Error processing return', 'error');
-  }
-}
-
-// 5. Record Payout Modal
-function openRecordPayoutModal(vendorId) {
-  const container = document.getElementById('modalContainer');
-  container.innerHTML = `
-    <div class="modal-dialog">
-      <div class="modal-header">
-        <h3 class="modal-title">💳 Record Payout to Vendor</h3>
-        <button class="modal-close-btn" onclick="closeModal()">×</button>
-      </div>
-      <form onsubmit="submitPayout(event, '${vendorId}')">
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="form-label required">Payout Amount (₹)</label>
-            <input type="number" id="payAmount" class="form-input" placeholder="e.g. 5000" min="1" step="0.01" required />
-            <span class="form-helper">This will immediately reduce the vendor's 'Balance to Pay'.</span>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label required">Payment Method</label>
-            <select id="payMode" class="form-select" required>
-              <option value="IMPS">IMPS</option>
-              <option value="Bank NEFT/RTGS">Bank NEFT/RTGS</option>
-              <option value="Bank Transfer">Bank Transfer</option>
-              <option value="Cash Payout">Cash Payout</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label required">UTR / Reference Number</label>
-            <input type="text" id="payRef" class="form-input" placeholder="e.g. UPI/391029102910 or NEFT-HDFC-99182" required />
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
-          <button type="submit" class="btn btn-success">Save Payout</button>
-        </div>
-      </form>
-    </div>
-  `;
-  container.classList.remove('hidden');
-}
-
-async function submitPayout(e, vendorId) {
-  e.preventDefault();
-  const amount = document.getElementById('payAmount').value;
-  const mode = document.getElementById('payMode').value;
-  const reference = document.getElementById('payRef').value;
-
-  try {
-    const res = await fetch('/api/payouts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vendorId, amount, mode, reference })
-    });
-    const data = await res.json();
-    if (data.error) {
-      alert(data.error);
-    } else {
-      toast(`Payout of ₹${amount} recorded!`, 'success');
-      closeModal();
-      await loadVendorDetail(vendorId);
-    }
-  } catch (err) {
-    toast('Error recording payout', 'error');
   }
 }
 
@@ -5624,7 +5574,7 @@ async function loadAndRenderPayoutMgmt() {
                         <div style="font-size: 0.72rem; color: var(--notion-muted);">${escapeHtml(p.id)}</div>
                       </td>
                       <td style="padding: 12px 14px;">
-                        <span class="badge" style="background: #eef2f6; font-size: 0.72rem; font-weight: 600;">${escapeHtml(p.stallNo || 'Stall TBD')}</span>
+                        <span class="badge" style="background: #eef2f6; font-size: 0.72rem; font-weight: 600;">${escapeHtml(p.stallNo || p.vendorStall || 'Stall TBD')}</span>
                         <div style="font-weight: 600; color: var(--notion-ink); margin-top: 2px;">${escapeHtml(p.vendorName || p.vendorId)}</div>
                       </td>
                       <td style="padding: 12px 14px; text-align: right; font-weight: 700; color: #1AAE39; font-size: 0.95rem;">
@@ -6099,6 +6049,7 @@ async function submitOrderPayout(e) {
     if (data.success) {
       toast(`✓ Order-linked payout of ${formatINR(totalAmount)} recorded successfully!`, 'success');
       closeModal();
+      refreshVendorsCache();
       await renderPayoutManagementView();
     } else {
       toast(data.error || 'Failed to record payout', 'error');

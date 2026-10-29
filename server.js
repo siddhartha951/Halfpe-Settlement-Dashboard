@@ -929,7 +929,7 @@ app.put('/api/orders/:id', (req, res) => {
   try {
     const updated = store.updateInternalOrder(req.params.id, req.body, activeUser);
     if (!updated) return res.status(404).json({ error: 'Order not found' });
-    broadcastEvent('ORDER_UPDATED', { order: updated });
+    broadcastEvent('ORDER_UPDATED', { order: updated }, updated.cityId);
     res.json({ success: true, order: updated });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -968,7 +968,7 @@ app.post('/api/orders/:id/push-to-shopify', async (req, res) => {
       orderId: order.id,
       shopifyOrderId: shopifyResult.shopifyOrderId,
       shopifyOrderNumber: shopifyResult.shopifyOrderNumber
-    });
+    }, order.cityId);
 
     res.json({
       success: true,
@@ -1026,7 +1026,7 @@ app.post('/api/orders/bulk-push-to-shopify', async (req, res) => {
   broadcastEvent('ORDERS_BULK_PUSHED', {
     processedCount: results.length,
     results
-  });
+  }, getRequestCity(req));
 
   res.json({
     success: true,
@@ -1045,7 +1045,7 @@ app.post('/api/orders/:id/reject', (req, res) => {
   try {
     const order = store.rejectInternalOrder(req.params.id, reason || 'Rejected by Super Admin', activeUser);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    broadcastEvent('ORDER_REJECTED', { orderId: req.params.id, reason });
+    broadcastEvent('ORDER_REJECTED', { orderId: req.params.id, reason }, order.cityId);
     res.json({ success: true, message: 'Order rejected successfully', order });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1095,7 +1095,7 @@ app.post('/api/orders/simulate', (req, res) => {
     billNo: result.order.billNo,
     vendorId: result.order.vendorId,
     grossAmount: result.order.totals?.grossAmount || 0
-  });
+  }, result.order.cityId);
 
   res.json({ success: true, order: result.order });
 });
@@ -1570,54 +1570,28 @@ app.post('/api/payouts', (req, res) => {
   }
 
   const { vendorId, amount, mode, reference, notes, allocations, date } = req.body;
-  if (!vendorId || (!amount && (!allocations || allocations.length === 0))) {
-    return res.status(400).json({ error: 'Vendor and amount/allocations are required.' });
+  if (!vendorId) {
+    return res.status(400).json({ error: 'Vendor is required.' });
+  }
+  // Every payout must be allocated to specific bills, so it can never exceed what is owed on them.
+  // Lumpsum payouts (the old vendor-dashboard form) allowed overpayment and a negative balance.
+  if (!Array.isArray(allocations) || allocations.length === 0) {
+    return res.status(400).json({ error: 'Select the bills this payout settles. Record payouts from Payout Management.' });
   }
 
   try {
-    // If allocations are provided, use order-linked payout recording
-    if (Array.isArray(allocations) && allocations.length > 0) {
-      const payout = store.recordOrderPayout({
-        vendorId,
-        allocations,
-        amount: parseFloat(amount),
-        paymentMode: mode,
-        referenceUtr: reference,
-        notes,
-        adminUser: actor,
-        date
-      });
-      broadcastEvent('PAYOUT_DISBURSED', { vendorId, amount: parseFloat(amount) });
-      return res.status(201).json({ success: true, payout });
-    }
-
-    // Fallback: general vendor payout without order linking (for legacy backward compatibility)
-    const newPayout = {
-      id: 'pay_' + Date.now(),
+    const payout = store.recordOrderPayout({
       vendorId,
+      allocations,
       amount: parseFloat(amount),
-      mode: mode || 'Bank Transfer',
-      reference: reference || 'UTR-' + Date.now().toString().slice(-8),
-      notes: notes || '',
-      date: date || new Date().toISOString(),
-      paidBy: actor.name
-    };
-
-    store.data.payouts.unshift(newPayout);
-    store.logAudit(
-      actor.name,
-      'RECORD_PAYOUT',
-      'payout',
-      newPayout.id,
-      'amount',
-      null,
-      `₹${newPayout.amount} via ${newPayout.mode} (Ref: ${newPayout.reference})`,
-      `Lumpsum payout recorded for vendor ${vendorId}`
-    );
-    store.save();
-
-    broadcastEvent('PAYOUT_DISBURSED', { vendorId, amount: parseFloat(amount) });
-    res.json({ success: true, payout: newPayout });
+      paymentMode: mode,
+      referenceUtr: reference,
+      notes,
+      adminUser: actor,
+      date
+    });
+    broadcastEvent('PAYOUT_DISBURSED', { vendorId, amount: payout.amount }, payout.cityId);
+    res.status(201).json({ success: true, payout });
   } catch (err) {
     console.error('[Payout Error]:', err.message);
     res.status(400).json({ success: false, error: err.message });
