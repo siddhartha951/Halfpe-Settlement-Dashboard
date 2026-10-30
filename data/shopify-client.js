@@ -305,6 +305,7 @@ class ShopifyClient {
         tags: tags.join(', '),
         note: `Vijayawada Expo Internal Order #${billNo} | Stall: ${internalOrder.stallNo} (${vendorName}) | Paid: ₹${grossAmount} via ${internalOrder.payment?.method || 'Prepaid'} [${internalOrder.payment?.paymentId || 'N/A'}]`,
         note_attributes: [
+          { name: 'HalfPe_Bill_Copy_No', value: internalOrder.billCopyNo || '' },
           { name: 'Expo_Bill_No', value: billNo },
           { name: 'Internal_Order_ID', value: internalOrder.id },
           { name: 'Stall_No', value: internalOrder.stallNo },
@@ -464,7 +465,8 @@ class ShopifyClient {
       // Extract Bill Copy Number from note_attributes or note
       let billCopyNo = 'HP-VIJ-' + orderId.slice(-5);
       if (Array.isArray(order.note_attributes)) {
-        const attr = order.note_attributes.find(a =>
+        // Prefer the HalfPe Bill Copy Number over the system bill number when the order carries both
+        const attr = order.note_attributes.find(a => a.name && a.name.toLowerCase().includes('copy') && a.value) || order.note_attributes.find(a =>
           a.name && (a.name.toLowerCase().includes('bill') || a.name.toLowerCase().includes('slip'))
         );
         if (attr && attr.value) billCopyNo = attr.value.trim().toUpperCase();

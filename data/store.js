@@ -117,6 +117,32 @@ function formatBillCopy(raw) {
   return digits || str;
 }
 
+// HalfPe Bill Copy Numbers are the numbers printed on the physical bill books. A stall group can carry
+// several ("1045, 1046"). The system bill number (HPD-VIJ-261010-5240) is only an internal reference.
+function splitBillCopyNos(raw) {
+  return String(raw || '').split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+}
+
+// Older payment-page orders kept the number only on each item, and "GEN-n" was a placeholder for a blank one
+function orderBillCopyNos(order, vendorId) {
+  const allocs = (order.vendorAllocations || []).filter(a => !vendorId || a.vendorId === vendorId);
+  const systemNo = String(order.billNo || '').toUpperCase();
+  const nos = [];
+  const add = raw => splitBillCopyNos(raw).forEach(n => {
+    if (n !== systemNo && !/^GEN-\d+$/.test(n) && !nos.includes(n)) nos.push(n);
+  });
+  allocs.forEach(a => {
+    add(a.billBookNo);
+    (a.items || []).forEach(it => add(it.billCopyNo));
+  });
+  return nos;
+}
+
+function orderBillCopyDisplay(order, vendorId) {
+  const nos = orderBillCopyNos(order, vendorId);
+  return nos.length > 0 ? nos.join(', ') : formatBillCopy(order.billNo);
+}
+
 function normalizeCityCode(raw) {
   if (!raw) return 'VIJ';
   const s = String(raw).trim().toUpperCase();
@@ -156,7 +182,11 @@ class Store {
           if (v.active === undefined) v.active = true;
         });
         (parsed.billRows || []).forEach(b => { if (!b.cityId) b.cityId = 'VIJ'; });
-        (parsed.internalOrders || []).forEach(o => { if (!o.cityId) o.cityId = 'VIJ'; });
+        (parsed.internalOrders || []).forEach(o => {
+          if (!o.cityId) o.cityId = 'VIJ';
+          o.billCopyNo = orderBillCopyDisplay(o);
+        });
+        if (!parsed.billSeries) parsed.billSeries = [];
         (parsed.returns || []).forEach(r => { if (!r.cityId) r.cityId = 'VIJ'; });
         // Payouts belong to their vendor's city. Older payouts were saved without one and got stamped VIJ,
         // which hid non-Vijayawada payouts from Payout Management, so always take it from the vendor.
@@ -627,10 +657,14 @@ class Store {
 
     const isMultiVendor = vendorAllocations.length > 1;
     const primaryVendor = vendorAllocations[0];
+    const draftForCopies = { billNo: rawBillNo, vendorAllocations };
+    const duplicateBillCopyNos = this.findBillCopyConflicts(targetCityId, orderBillCopyNos(draftForCopies));
 
     const newOrder = {
       id: orderData.id || ('ord_' + Date.now() + '_' + Math.floor(100 + Math.random() * 900)),
       billNo: rawBillNo,
+      billCopyNo: orderBillCopyDisplay(draftForCopies),
+      duplicateBillCopyNos,
       clientOrderRef: clientOrderRef || rawBillNo,
       eventId: 'HPD-' + targetCityId + '-OCT2026',
       cityId: targetCityId,
@@ -718,6 +752,19 @@ class Store {
       'Recorded internally before Shopify push',
       targetCityId
     );
+    if (duplicateBillCopyNos.length > 0) {
+      this.logAudit(
+        'System',
+        'DUPLICATE_BILL_COPY',
+        'internal_orders',
+        newOrder.id,
+        'billCopyNo',
+        null,
+        duplicateBillCopyNos.join(', '),
+        'Bill Copy Number already used by another order; review before approving',
+        targetCityId
+      );
+    }
 
     this.save();
     return { order: newOrder, isDuplicate: false };
@@ -750,6 +797,7 @@ class Store {
       const q = filters.search.toLowerCase().trim();
       orders = orders.filter(o => 
         (o.billNo && o.billNo.toLowerCase().includes(q)) ||
+        (o.billCopyNo && o.billCopyNo.toLowerCase().includes(q)) ||
         (o.customer?.name && o.customer.name.toLowerCase().includes(q)) ||
         (o.customer?.phone && o.customer.phone.includes(q)) ||
         (o.vendorName && o.vendorName.toLowerCase().includes(q)) ||
@@ -948,8 +996,8 @@ class Store {
     
     // Only approved orders count toward the vendor's settlement balance, so only they can be paid out.
     // Paying pending or rejected orders is what drove vendor balances negative.
-    internalOrders.filter(o => o.status === 'APPROVED').forEach(o => {
-      const cleanBill = formatBillCopy(o.billNo);
+    internalOrders.filter(o => this.isOrderPayable(o, vendorId)).forEach(o => {
+      const cleanBill = orderBillCopyDisplay(o, vendorId);
       if (o.vendorId === vendorId) {
         if (o.outstandingBalance > 0.01) {
           const gross = Number(o.totals?.grossAmount || o.totals?.payable || 0);
@@ -983,7 +1031,7 @@ class Store {
           const allocPaid = alloc.amountPaid || 0;
           const allocBal = Math.round(Math.max(0, allocPayable - allocPaid) * 100) / 100;
           if (allocBal > 0.01) {
-            const allocCleanBill = formatBillCopy(alloc.billBookNo || o.billNo);
+            const allocCleanBill = orderBillCopyDisplay(o, vendorId);
             results.push({
               orderId: o.id,
               allocationId: `${o.id}_alloc_${alloc.vendorId}`,
@@ -1008,6 +1056,7 @@ class Store {
       }
     });
 
+    const returnedRowIds = this.getReturnedBillRowIds();
     const allInternalIds = new Set(internalOrders.map(o => o.id));
     const allInternalBillNos = new Set(internalOrders.map(o => o.billNo));
     
@@ -1015,7 +1064,8 @@ class Store {
       (r.cityId || 'VIJ').toUpperCase() === targetCityId &&
       r.vendorId === vendorId && 
       !r.isVoid && 
-      r.isApproved !== false && 
+      r.isApproved !== false &&
+      !returnedRowIds.has(r.id) &&
       !allInternalIds.has(r.internalOrderId) && 
       !allInternalIds.has(r.id) &&
       !allInternalBillNos.has(r.billCopyNo)
@@ -1100,8 +1150,8 @@ class Store {
 
       const order = (this.data.internalOrders || []).find(o => inCity(o) && (o.id === alloc.orderId || o.billNo === alloc.billNo));
       if (order) {
-        if (order.status !== 'APPROVED') {
-          throw new Error(`Bill #${order.billNo} is ${String(order.status || 'pending').replace(/_/g, ' ').toLowerCase()} and cannot be paid out until it is approved.`);
+        if (!this.isOrderPayable(order, vendorId)) {
+          throw new Error(`Bill #${orderBillCopyDisplay(order, vendorId)} is not payable: only orders pushed to Shopify, not voided and not returned, can be paid out.`);
         }
         const vendorAlloc = Array.isArray(order.vendorAllocations) ? order.vendorAllocations.find(a => a.vendorId === vendorId) : null;
         const ownsOrder = order.vendorId === vendorId;
@@ -1130,7 +1180,7 @@ class Store {
       if (!bill) {
         throw new Error(`Order #${alloc.orderId || alloc.billNo} not found for allocation.`);
       }
-      if (bill.isVoid || bill.isApproved === false) {
+      if (bill.isVoid || bill.isApproved === false || this.getReturnedBillRowIds().has(bill.id)) {
         throw new Error(`Bill #${bill.billCopyNo} is void or not approved and cannot be paid out.`);
       }
       const commPct = Number(vendor.commissionPct ?? 15);
@@ -1175,7 +1225,7 @@ class Store {
         });
         processedAllocations.push({
           orderId: order.id,
-          billNo: formatBillCopy((!ownsOrder && vendorAlloc.billBookNo) || order.billNo),
+          billNo: orderBillCopyDisplay(order, vendorId),
           amount: allocAmt,
           remainingBalance: ownsOrder ? order.outstandingBalance : vendorAlloc.outstandingBalance,
           payoutStatus: ownsOrder ? order.payoutStatus : vendorAlloc.payoutStatus
@@ -1450,6 +1500,150 @@ class Store {
 
     this.save();
     return createdList;
+  }
+
+  getReturnedBillRowIds() {
+    return new Set((this.data.returns || []).map(r => r.billRowId).filter(Boolean));
+  }
+
+  // Payout Management only offers orders that are live in Shopify, approved, and not voided or returned
+  isOrderPayable(order, vendorId) {
+    if (order.status !== 'APPROVED') return false;
+    if (order.shopifySyncStatus !== 'PUSHED' && !order.shopifyOrderId) return false;
+    const returned = this.getReturnedBillRowIds();
+    const rows = (this.data.billRows || []).filter(r => r.internalOrderId === order.id && (!vendorId || r.vendorId === vendorId));
+    return !rows.some(r => r.isVoid || returned.has(r.id));
+  }
+
+  getBillCopyDisplay(order) {
+    return orderBillCopyDisplay(order);
+  }
+
+  // Bill Copy Numbers already used in a city by live orders (rejected orders and void bills free their numbers)
+  findBillCopyConflicts(cityId, billCopyNos, excludeOrderId = null) {
+    const wanted = new Set((billCopyNos || []).flatMap(splitBillCopyNos));
+    if (wanted.size === 0) return [];
+    const city = normalizeCityCode(cityId);
+    const inCity = r => (r.cityId || 'VIJ').toUpperCase() === city;
+    const used = new Set();
+    (this.data.internalOrders || []).forEach(o => {
+      if (!inCity(o) || o.status === 'REJECTED' || o.id === excludeOrderId) return;
+      orderBillCopyNos(o).forEach(n => used.add(n));
+    });
+    (this.data.billRows || []).forEach(r => {
+      if (!inCity(r) || r.isVoid || r.internalOrderId) return;
+      splitBillCopyNos(r.billCopyNo).forEach(n => used.add(n));
+    });
+    return [...wanted].filter(n => used.has(n));
+  }
+
+  // Super Admin customer search across payment-page orders and Shopify-synced bills
+  searchCustomerOrders(cityId, query, limit = 50) {
+    const q = String(query || '').trim().toLowerCase();
+    if (q.length < 2) return [];
+    const digits = q.replace(/\D/g, '');
+    const city = normalizeCityCode(cityId);
+    const inCity = r => (r.cityId || 'VIJ').toUpperCase() === city;
+    const matches = (name, phone, copy) =>
+      (name && name.toLowerCase().includes(q)) ||
+      (digits.length >= 3 && phone && String(phone).replace(/\D/g, '').includes(digits)) ||
+      (copy && String(copy).toLowerCase().includes(q));
+
+    const results = [];
+    (this.data.internalOrders || []).filter(inCity).forEach(o => {
+      if (!matches(o.customer?.name, o.customer?.phone, o.billCopyNo)) return;
+      results.push({
+        type: 'order',
+        id: o.id,
+        billCopyNo: o.billCopyNo || formatBillCopy(o.billNo),
+        customerName: o.customer?.name || 'Walk-in',
+        mobile: o.customer?.phone || '',
+        amount: Number(o.totals?.grossAmount || 0),
+        stalls: o.stallNo,
+        vendors: o.vendorName,
+        status: o.status,
+        shopifyOrderNumber: o.shopifyOrderNumber || null,
+        date: o.createdAt
+      });
+    });
+    const vendorsById = new Map((this.data.vendors || []).map(v => [v.id, v]));
+    (this.data.billRows || []).filter(r => inCity(r) && !r.internalOrderId).forEach(r => {
+      if (!matches(r.customerName, r.mobile, r.billCopyNo)) return;
+      const v = vendorsById.get(r.vendorId);
+      results.push({
+        type: 'bill',
+        id: r.id,
+        billCopyNo: formatBillCopy(r.billCopyNo || r.id),
+        customerName: r.customerName || 'Walk-in',
+        mobile: r.mobile || '',
+        amount: Number(r.billAmount || 0),
+        stalls: r.stallNo || (v && v.stallNo) || '',
+        vendors: (v && v.name) || '',
+        status: r.isVoid ? 'VOID' : (r.status || ''),
+        shopifyOrderNumber: r.shopifyOrderId || null,
+        date: r.createdAt
+      });
+    });
+    results.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    return results.slice(0, limit);
+  }
+
+  // -------------------------------------------------------------
+  // Bill Book Series: each vendor owns ranges of HalfPe Bill Copy Numbers (usually books of 50)
+  // -------------------------------------------------------------
+  getBillSeries(cityId) {
+    const city = normalizeCityCode(cityId);
+    const vendorsById = new Map((this.data.vendors || []).map(v => [v.id, v]));
+    return (this.data.billSeries || [])
+      .filter(s => s.cityId === city)
+      .map(s => {
+        const v = vendorsById.get(s.vendorId);
+        return { ...s, vendorName: v ? v.name : s.vendorId, stallNo: v ? v.stallNo : '' };
+      })
+      .sort((a, b) => a.start - b.start);
+  }
+
+  addBillSeries({ cityId, vendorId, start, end, count }, user = 'Super Admin') {
+    const city = normalizeCityCode(cityId);
+    const vendor = (this.data.vendors || []).find(v => v.id === vendorId && normalizeCityCode(v.cityId) === city);
+    if (!vendor) throw new Error('Select a vendor from this city.');
+    const from = Number(start);
+    const to = end !== undefined && end !== '' && end !== null ? Number(end) : from + Number(count || 50) - 1;
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) {
+      throw new Error('Enter a valid bill number range (whole numbers, start ≤ end).');
+    }
+    if (to - from + 1 > 5000) throw new Error('A single series cannot exceed 5000 bill numbers.');
+    const clash = (this.data.billSeries || []).find(s => s.cityId === city && from <= s.end && to >= s.start);
+    if (clash) {
+      const owner = (this.data.vendors || []).find(v => v.id === clash.vendorId);
+      throw new Error(`Range ${from}–${to} overlaps ${clash.start}–${clash.end} assigned to ${owner ? owner.name : clash.vendorId}.`);
+    }
+    const series = {
+      id: 'bs_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+      cityId: city,
+      vendorId,
+      start: from,
+      end: to,
+      createdAt: new Date().toISOString(),
+      createdBy: typeof user === 'string' ? user : (user.name || 'Super Admin')
+    };
+    if (!this.data.billSeries) this.data.billSeries = [];
+    this.data.billSeries.push(series);
+    this.logAudit(series.createdBy, 'BILL_SERIES_ADDED', 'bill_series', series.id, 'range', null,
+      `${from}–${to} → ${vendor.name} (${vendor.stallNo})`, 'Bill book series assigned', city);
+    this.save();
+    return series;
+  }
+
+  deleteBillSeries(id, user = 'Super Admin') {
+    const series = (this.data.billSeries || []).find(s => s.id === id);
+    if (!series) throw new Error('Bill series not found.');
+    this.data.billSeries = this.data.billSeries.filter(s => s !== series);
+    const vendor = (this.data.vendors || []).find(v => v.id === series.vendorId);
+    this.logAudit(typeof user === 'string' ? user : (user.name || 'Super Admin'), 'BILL_SERIES_DELETED', 'bill_series', id, 'range',
+      `${series.start}–${series.end} → ${vendor ? vendor.name : series.vendorId}`, null, 'Bill book series removed', series.cityId);
+    this.save();
+    return series;
   }
 
   getStorageStatus() {

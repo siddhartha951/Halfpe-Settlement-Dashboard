@@ -164,6 +164,8 @@ const PUBLIC_API = new Set([
   'GET /api/vendors',
   'POST /api/orders/record',
   'POST /api/webhooks/shopify-order',
+  'POST /api/bill-copy/check',
+  'GET /api/bill-series/public',
 ]);
 
 // Every other API call needs a valid session
@@ -516,6 +518,64 @@ app.delete('/api/cities/:id', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// -------------------------------------------------------------
+// HalfPe Bill Copy Numbers & Bill Book Series
+// -------------------------------------------------------------
+
+// Payment page calls this before taking payment so a Bill Copy Number cannot be used twice
+app.post('/api/bill-copy/check', (req, res) => {
+  const { billCopyNos } = req.body || {};
+  if (!Array.isArray(billCopyNos) || billCopyNos.length > 200) {
+    return res.status(400).json({ error: 'billCopyNos must be a list of bill copy numbers.' });
+  }
+  const cityId = getRequestCity(req);
+  res.json({ duplicates: store.findBillCopyConflicts(cityId, billCopyNos.map(String)) });
+});
+
+// Payment page uses the ranges to pre-select the vendor from the Bill Copy Number
+app.get('/api/bill-series/public', (req, res) => {
+  const cityId = getRequestCity(req);
+  res.json({
+    series: store.getBillSeries(cityId).map(s => ({ start: s.start, end: s.end, vendorId: s.vendorId, stallNo: s.stallNo, vendorName: s.vendorName }))
+  });
+});
+
+app.get('/api/bill-series', (req, res) => {
+  res.json({ series: store.getBillSeries(getRequestCity(req)) });
+});
+
+app.post('/api/bill-series', (req, res) => {
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only Super Admin can manage bill book series' });
+  }
+  try {
+    const { vendorId, start, end, count } = req.body || {};
+    const series = store.addBillSeries({ cityId: getRequestCity(req), vendorId, start, end, count }, req.user);
+    res.status(201).json({ success: true, series });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/bill-series/:id', (req, res) => {
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only Super Admin can manage bill book series' });
+  }
+  try {
+    res.json({ success: true, series: store.deleteBillSeries(req.params.id, req.user) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Super Admin: find a customer's orders by mobile, name or HalfPe Bill Copy Number
+app.get('/api/search/customers', (req, res) => {
+  if (req.user.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only Super Admin can search customers' });
+  }
+  res.json({ results: store.searchCustomerOrders(getRequestCity(req), req.query.q) });
 });
 
 // Lets the dashboard warn the super admin when data would be wiped by the next deploy
@@ -1548,12 +1608,18 @@ app.get('/api/payouts', (req, res) => {
       payouts = store.filterByDateRange(payouts, 'date', startDate, endDate);
     }
 
+    const ordersById = new Map((store.data.internalOrders || []).map(o => [o.id, o]));
     const populated = payouts.map(p => {
       const v = store.data.vendors.find(item => item.id === p.vendorId);
       return {
         ...p,
         vendorName: v ? v.name : (p.vendorName || p.vendorId),
-        vendorStall: v ? v.stallNo : (p.vendorStall || '-')
+        vendorStall: v ? v.stallNo : (p.vendorStall || '-'),
+        // Older payouts stored the system bill number; show the HalfPe Bill Copy Number instead
+        allocations: (p.allocations || []).map(a => {
+          const order = ordersById.get(a.orderId);
+          return order ? { ...a, billNo: order.billCopyNo || a.billNo } : a;
+        })
       };
     });
 

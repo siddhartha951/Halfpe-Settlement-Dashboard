@@ -922,7 +922,7 @@ async function exportOrdersManagementCSV() {
     }
 
     const headers = [
-      'Bill No', 'Date (IST)', 'Customer Name', 'Customer Phone', 'Stall No(s)', 
+      'HalfPe Bill Copy No', 'Date (IST)', 'Customer Name', 'Customer Phone', 'Stall No(s)', 
       'Vendor(s)', 'Gross Amount (₹)', 'Payable Amount (₹)', 'Payment Method', 
       'Payment ID / Ref', 'Internal Status', 'Shopify Order #', 'Shopify Sync Status'
     ];
@@ -936,7 +936,7 @@ async function exportOrdersManagementCSV() {
       }
 
       return [
-        o.billNo || o.id,
+        o.billCopyNo || o.billNo || o.id,
         formatDate(o.createdAt),
         o.customer?.name || 'Walk-in',
         o.customer?.phone || '-',
@@ -3468,6 +3468,251 @@ async function renderGlobalAuditView() {
 // -------------------------------------------------------------
 // Modals & Operations
 // -------------------------------------------------------------
+// -------------------------------------------------------------
+// Customer Search (Super Admin): mobile, name or HalfPe Bill Copy Number
+// -------------------------------------------------------------
+let customerSearchTimer = null;
+
+function openCustomerSearchModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+  container.innerHTML = `
+    <div class="login-modal-box" style="max-width: 860px;">
+      <div class="login-modal-header">
+        <div>
+          <h3 class="login-modal-title">🔎 Customer Search</h3>
+          <p class="login-modal-sub">Search this city's orders by customer mobile, name or HalfPe Bill Copy Number</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+      <div style="padding: 20px 24px;">
+        <input type="text" id="customerSearchInput" class="form-input" placeholder="e.g. 98480 12345, Ramesh, or 1045" autocomplete="off"
+          oninput="scheduleCustomerSearch(this.value)" style="width: 100%; height: 40px; font-size: 0.95rem;">
+        <div id="customerSearchResults" style="margin-top: 16px; max-height: 60vh; overflow-y: auto;">
+          <div style="color: var(--notion-secondary); font-size: 0.85rem;">Type at least 2 characters.</div>
+        </div>
+      </div>
+    </div>
+  `;
+  container.classList.remove('hidden');
+  const input = document.getElementById('customerSearchInput');
+  if (input) input.focus();
+}
+
+function scheduleCustomerSearch(value) {
+  clearTimeout(customerSearchTimer);
+  customerSearchTimer = setTimeout(() => runCustomerSearch(value), 250);
+}
+
+async function runCustomerSearch(value) {
+  const box = document.getElementById('customerSearchResults');
+  if (!box) return;
+  const q = String(value || '').trim();
+  if (q.length < 2) {
+    box.innerHTML = '<div style="color: var(--notion-secondary); font-size: 0.85rem;">Type at least 2 characters.</div>';
+    return;
+  }
+  try {
+    const res = await fetch('/api/search/customers?q=' + encodeURIComponent(q));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.status);
+    if (q !== String(document.getElementById('customerSearchInput')?.value || '').trim()) return;
+    const results = data.results || [];
+    if (results.length === 0) {
+      box.innerHTML = '<div style="color: var(--notion-secondary); font-size: 0.85rem;">No orders found.</div>';
+      return;
+    }
+    box.innerHTML = `
+      <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.84rem;">
+        <thead>
+          <tr style="background: var(--notion-surface-warm); text-align: left;">
+            <th style="padding: 8px 10px;">Bill Copy No</th>
+            <th style="padding: 8px 10px;">Customer</th>
+            <th style="padding: 8px 10px;">Stall / Vendor</th>
+            <th style="padding: 8px 10px; text-align: right;">Amount</th>
+            <th style="padding: 8px 10px;">Status</th>
+            <th style="padding: 8px 10px;">Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${results.map(r => `
+            <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); ${r.type === 'order' ? 'cursor: pointer;' : ''}"
+              ${r.type === 'order' ? `onclick="closeModal(); openViewOrderModal('${escapeHtml(r.id)}')"` : ''}>
+              <td style="padding: 8px 10px; font-family: var(--font-mono); font-weight: 700;">${escapeHtml(r.billCopyNo || '-')}</td>
+              <td style="padding: 8px 10px;">
+                <div style="font-weight: 600;">${escapeHtml(r.customerName || 'Walk-in')}</div>
+                <div style="font-size: 0.75rem; color: var(--notion-secondary);">${escapeHtml(r.mobile || '-')}</div>
+              </td>
+              <td style="padding: 8px 10px;">
+                <div style="font-size: 0.75rem;">${escapeHtml(r.stalls || '-')}</div>
+                <div style="font-size: 0.78rem; color: var(--notion-secondary);">${escapeHtml(r.vendors || '')}</div>
+              </td>
+              <td style="padding: 8px 10px; text-align: right; font-weight: 600;">${formatINR(r.amount || 0)}</td>
+              <td style="padding: 8px 10px; font-size: 0.75rem;">
+                ${escapeHtml(String(r.status || '-').replace(/_/g, ' '))}
+                ${r.shopifyOrderNumber ? `<div style="color: var(--notion-muted);">Shopify ${escapeHtml(String(r.shopifyOrderNumber))}</div>` : ''}
+              </td>
+              <td style="padding: 8px 10px; font-size: 0.75rem; white-space: nowrap;">${formatDate(r.date)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ${results.length >= 50 ? '<div style="font-size: 0.75rem; color: var(--notion-muted); margin-top: 8px;">Showing the 50 most recent matches. Refine the search to narrow down.</div>' : ''}
+    `;
+  } catch (err) {
+    box.innerHTML = `<div style="color: #c62828; font-size: 0.85rem;">Search failed: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// -------------------------------------------------------------
+// Bill Book Series (Super Admin): HalfPe Bill Copy Number ranges per vendor
+// -------------------------------------------------------------
+async function openBillSeriesModal() {
+  const container = document.getElementById('modalContainer');
+  if (!container) return;
+  let vendors = [];
+  try {
+    const res = await fetch('/api/vendors');
+    const data = await res.json();
+    vendors = (data.vendors || []).map(x => x.vendor || x).filter(v => v.active !== false).sort((a, b) => compareStallNumbers(a, b));
+  } catch (e) {}
+
+  container.innerHTML = `
+    <div class="login-modal-box" style="max-width: 760px;">
+      <div class="login-modal-header">
+        <div>
+          <h3 class="login-modal-title">📚 Bill Book Series</h3>
+          <p class="login-modal-sub">Assign HalfPe Bill Copy Number ranges to vendors. The payment page selects the vendor automatically from the bill number.</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal()">×</button>
+      </div>
+      <div style="padding: 20px 24px; max-height: 75vh; overflow-y: auto;">
+        <form onsubmit="submitBillSeries(event)" style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 18px;">
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 4px;">Vendor *</label>
+            <select id="billSeriesVendor" class="form-input" required style="width: 100%; height: 36px;">
+              <option value="">Select vendor…</option>
+              ${vendors.map(v => `<option value="${escapeHtml(v.id)}">${escapeHtml(v.stallNo)}: ${escapeHtml(v.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 4px;">From Bill No *</label>
+            <input type="number" id="billSeriesStart" class="form-input" min="1" step="1" required style="width: 100%; height: 36px;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 4px;">To Bill No</label>
+            <input type="number" id="billSeriesEnd" class="form-input" min="1" step="1" placeholder="+50" style="width: 100%; height: 36px;">
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" style="height: 36px;">➕ Assign</button>
+        </form>
+        <div style="font-size: 0.75rem; color: var(--notion-secondary); margin: -8px 0 16px;">Leave "To Bill No" empty to assign a book of 50 (e.g. 1001 → 1001–1050).</div>
+        <div id="billSeriesList"><div style="color: var(--notion-secondary);">⏳ Loading…</div></div>
+      </div>
+    </div>
+  `;
+  container.classList.remove('hidden');
+  loadBillSeriesList();
+}
+
+async function loadBillSeriesList() {
+  const box = document.getElementById('billSeriesList');
+  if (!box) return;
+  try {
+    const res = await fetch('/api/bill-series');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.status);
+    const series = data.series || [];
+    const startInput = document.getElementById('billSeriesStart');
+    if (startInput && !startInput.value && series.length > 0) {
+      startInput.placeholder = 'Next free: ' + (Math.max(...series.map(s => s.end)) + 1);
+    }
+    if (series.length === 0) {
+      box.innerHTML = '<div style="color: var(--notion-secondary); font-size: 0.85rem;">No bill book series assigned in this city yet.</div>';
+      return;
+    }
+    box.innerHTML = `
+      <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+        <thead>
+          <tr style="background: var(--notion-surface-warm); text-align: left;">
+            <th style="padding: 8px 10px;">Bill Copy Range</th>
+            <th style="padding: 8px 10px;">Books</th>
+            <th style="padding: 8px 10px;">Stall / Vendor</th>
+            <th style="padding: 8px 10px;">Added</th>
+            <th style="padding: 8px 10px;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${series.map(s => `
+            <tr style="border-bottom: 1px solid var(--notion-hairline-subtle);">
+              <td style="padding: 8px 10px; font-family: var(--font-mono); font-weight: 700;">${s.start} – ${s.end}</td>
+              <td style="padding: 8px 10px; font-size: 0.78rem;">${s.end - s.start + 1} bills</td>
+              <td style="padding: 8px 10px;">
+                <span class="badge" style="background: #eef2f6; font-size: 0.72rem;">${escapeHtml(s.stallNo || '-')}</span>
+                <span style="font-weight: 600; margin-left: 4px;">${escapeHtml(s.vendorName || s.vendorId)}</span>
+              </td>
+              <td style="padding: 8px 10px; font-size: 0.75rem; color: var(--notion-secondary);">${formatDate(s.createdAt)}<br>${escapeHtml(s.createdBy || '')}</td>
+              <td style="padding: 8px 10px; text-align: right;">
+                <button type="button" class="btn btn-outline btn-xs" style="color: #c62828;" onclick="deleteBillSeries('${escapeHtml(s.id)}', '${s.start}–${s.end}')">🗑 Remove</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    box.innerHTML = `<div style="color: #c62828;">Failed to load series: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function submitBillSeries(e) {
+  e.preventDefault();
+  const vendorId = document.getElementById('billSeriesVendor').value;
+  const start = parseInt(document.getElementById('billSeriesStart').value, 10);
+  const endRaw = document.getElementById('billSeriesEnd').value;
+  const body = { vendorId, start };
+  if (endRaw) body.end = parseInt(endRaw, 10); else body.count = 50;
+  try {
+    const res = await fetch('/api/bill-series', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      toast(data.error || 'Could not add series', 'error');
+      return;
+    }
+    toast(`✓ Bills ${data.series.start}–${data.series.end} assigned`, 'success');
+    document.getElementById('billSeriesStart').value = '';
+    document.getElementById('billSeriesEnd').value = '';
+    loadBillSeriesList();
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+async function deleteBillSeries(id, label) {
+  if (!confirm(`Remove bill series ${label}? The payment page will stop auto-selecting a vendor for these numbers.`)) return;
+  try {
+    const res = await fetch('/api/bill-series/' + encodeURIComponent(id), { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      toast(data.error || 'Could not remove series', 'error');
+      return;
+    }
+    toast(`✓ Series ${label} removed`, 'success');
+    loadBillSeriesList();
+  } catch (err) {
+    toast('Error: ' + err.message, 'error');
+  }
+}
+
+window.openCustomerSearchModal = openCustomerSearchModal;
+window.scheduleCustomerSearch = scheduleCustomerSearch;
+window.openBillSeriesModal = openBillSeriesModal;
+window.submitBillSeries = submitBillSeries;
+window.deleteBillSeries = deleteBillSeries;
+
 function closeModal() {
   const container = document.getElementById('modalContainer');
   container.classList.add('hidden');
@@ -4196,6 +4441,9 @@ async function renderOrdersManagementView() {
             </button>
           ` : ''}
           ${getUserRole() === 'super_admin' ? `
+            <button class="btn btn-outline btn-sm" onclick="openCustomerSearchModal()">
+              🔎 Customer Search
+            </button>
             <button class="btn btn-primary btn-sm" id="btnBulkApproveTop" onclick="bulkPushApprovedOrders()" style="background: #008060; border-color: #008060;">
               🚀 Bulk Approve & Push to Shopify
             </button>
@@ -4380,7 +4628,8 @@ async function loadAndRenderOrdersTable() {
                 
                 // Requirement: Only pure bill number without any prefix (e.g. 8569 or 6418)
                 const rawBill = String(o.billNo || o.id);
-                const cleanBillNo = rawBill.replace(/^(HPD-[A-Z0-9]+-\d+-|HP-VIJ-|HPD-VIJ-|HPD-|VIJ-|ord_\d+_[a-z0-9]+_|ord_\d+_)/i, '');
+                const cleanBillNo = o.billCopyNo || rawBill.replace(/^(HPD-[A-Z0-9]+-\d+-|HP-VIJ-|HPD-VIJ-|HPD-|VIJ-|ord_\d+_[a-z0-9]+_|ord_\d+_)/i, '');
+                const dupCopies = Array.isArray(o.duplicateBillCopyNos) ? o.duplicateBillCopyNos : [];
 
                 return `
                   <tr style="border-bottom: 1px solid var(--notion-hairline-subtle); transition: background 0.15s; ${isRejected ? 'opacity: 0.6; background: #fafafa;' : ''}" onmouseover="this.style.background='#faf9f8'" onmouseout="this.style.background='${isRejected ? '#fafafa' : 'transparent'}'">
@@ -4390,7 +4639,8 @@ async function loadAndRenderOrdersTable() {
                         onchange="toggleSelectOrder('${o.id}', this.checked)">
                     </td>
                     <td style="padding: 12px 14px;">
-                      <strong style="color: var(--notion-ink); font-family: var(--font-mono); font-size: 0.95rem;">${escapeHtml(cleanBillNo)}</strong>
+                      <strong style="color: var(--notion-ink); font-family: var(--font-mono); font-size: 0.95rem;" title="System ref: ${escapeHtml(rawBill)}">${escapeHtml(cleanBillNo)}</strong>
+                      ${dupCopies.length > 0 ? `<div style="font-size: 0.7rem; color: #c62828; font-weight: 600; margin-top: 2px;" title="This Bill Copy Number was already used by another order">⚠️ Duplicate: ${escapeHtml(dupCopies.join(', '))}</div>` : ''}
                       <div style="font-size: 0.72rem; color: var(--notion-muted); margin-top: 2px;">🕒 ${formatDate(o.createdAt || o.date)}</div>
                     </td>
                     <td style="padding: 12px 14px;">
@@ -4544,7 +4794,7 @@ async function pushSingleOrderToShopify(orderId) {
     const data = await res.json();
 
     if (data.success) {
-      toast(`✓ Order #${data.order?.billNo || orderId} approved! Shopify Order #${data.shopifyOrderNumber} created and Overall Settlement updated.`, 'success');
+      toast(`✓ Bill #${data.order?.billCopyNo || data.order?.billNo || orderId} approved! Shopify Order #${data.shopifyOrderNumber} created and Overall Settlement updated.`, 'success');
       await loadAndRenderOrdersTable();
       await loadVendorsSummary(); // Sync overall settlement
     } else {
@@ -4605,7 +4855,7 @@ async function simulatePosOrder() {
     });
     const data = await res.json();
     if (data.success) {
-      toast(`✓ Staged new POS Bill #${data.order.billNo} for ₹${data.order.totals?.grossAmount}! Ready for approval.`, 'success');
+      toast(`✓ Staged new POS Bill #${data.order.billCopyNo || data.order.billNo} for ₹${data.order.totals?.grossAmount}! Ready for approval.`, 'success');
       ordersManagementState.statusFilter = 'PENDING_APPROVAL';
       await renderOrdersManagementView();
     } else {
@@ -4678,7 +4928,7 @@ async function openViewOrderModal(orderId) {
       <div class="login-modal-box" style="max-width: 600px;">
         <div class="login-modal-header">
           <div>
-            <h3 class="login-modal-title">📦 Order #${escapeHtml(order.billNo)}</h3>
+            <h3 class="login-modal-title">📦 Bill #${escapeHtml(order.billCopyNo || order.billNo)}</h3>
             <p class="login-modal-sub">Internal HalfPe Record Details</p>
           </div>
           <button class="modal-close-btn" onclick="closeModal()">×</button>
@@ -4781,7 +5031,7 @@ async function openEditOrderModal(orderId) {
       <div class="login-modal-box" style="max-width: 540px;">
         <div class="login-modal-header">
           <div>
-            <h3 class="login-modal-title">✏️ Edit Order #${escapeHtml(order.billNo)}</h3>
+            <h3 class="login-modal-title">✏️ Edit Bill #${escapeHtml(order.billCopyNo || order.billNo)}</h3>
             <p class="login-modal-sub">Correct details before pushing to Shopify</p>
           </div>
           <button class="modal-close-btn" onclick="closeModal()">×</button>
@@ -4901,6 +5151,9 @@ async function renderVendorManagementView() {
         ${getUserRole() === 'super_admin' ? `
           <button class="btn btn-outline btn-sm" onclick="openBulkImportVendorsModal()" style="border-color: #10B981; color: #047857;">
             📊 Bulk Import (Excel / CSV)
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="openBillSeriesModal()" style="border-color: #7c3aed; color: #6d28d9;">
+            📚 Bill Book Series
           </button>
           <button class="btn btn-primary btn-sm" onclick="openAddVendorModal()">
             ➕ Add Single Vendor
